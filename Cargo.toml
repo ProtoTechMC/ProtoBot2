@@ -1,0 +1,18 @@
+[package]
+name = "protobot"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+flexi_logger = { version = "0.22.5", default_features = false, features = ["compress"] }
+futures = "0.3.21"
+hyper = { version = "0.14.19", features = ["http1", "http2", "server", "stream", "tcp"] }
+lazy_static = "1.4.0"
+log = "0.4.17"
+log-panics = "2.0.0"
+serde = { version = "1.0.137", features = ["derive"] }
+serde_json = "1.0.81"
+tokio = { version = "1.19.2", features = ["fs", "macros", "rt-multi-thread"] }
+tokio-util = { version = "0.7.3", features = ["io"] }
