@@ -170,7 +170,7 @@ fn main() {
         .expect("Failed to initialize logger");
     log_panics::init();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let addr = SocketAddr::from(([127, 0, 0, 1], config::get().port));
 
     info!("Listening on http://{}", addr);
 

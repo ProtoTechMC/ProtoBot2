@@ -14,6 +14,7 @@ pub fn get() -> &'static Config {
 
 #[derive(Deserialize)]
 pub struct Config {
+    pub port: u16,
     pub github_token: String,
     pub pterodactyl_domain: String,
     pub pterodactyl_server_id: String,
