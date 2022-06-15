@@ -1,4 +1,5 @@
 mod config;
+mod smp_commands;
 
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use futures::TryStreamExt;
@@ -8,6 +9,7 @@ use lazy_static::lazy_static;
 use log::{error, info};
 use std::fmt::{Display, Formatter};
 use std::fs::Permissions;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,6 +21,10 @@ use tokio_util::io::StreamReader;
 enum Error {
     Io(io::Error),
     Http(http::Error),
+    Reqwest(reqwest::Error),
+    Tungstenite(tokio_tungstenite::tungstenite::Error),
+    Json(serde_json::Error),
+    Other(String),
 }
 
 impl From<io::Error> for Error {
@@ -33,11 +39,33 @@ impl From<http::Error> for Error {
     }
 }
 
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
+        Error::Reqwest(err)
+    }
+}
+
+impl From<tokio_tungstenite::tungstenite::Error> for Error {
+    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
+        Error::Tungstenite(err)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Error::Json(err)
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Io(err) => write!(f, "I/O Error: {}", err),
             Error::Http(err) => write!(f, "HTTP Error: {}", err),
+            Error::Reqwest(err) => write!(f, "HTTP Request Error: {}", err),
+            Error::Tungstenite(err) => write!(f, "Websocket Error: {:?}", err),
+            Error::Json(err) => write!(f, "Json Error: {}", err),
+            Error::Other(err) => write!(f, "Other Error: {}", err),
         }
     }
 }
@@ -47,6 +75,10 @@ impl error::Error for Error {
         match self {
             Error::Io(err) => Some(err),
             Error::Http(err) => Some(err),
+            Error::Reqwest(err) => Some(err),
+            Error::Tungstenite(err) => Some(err),
+            Error::Json(err) => Some(err),
+            Error::Other(_) => None,
         }
     }
 }
@@ -119,6 +151,10 @@ pub fn shutdown() {
     SHUTDOWN.notify_waiters();
 }
 
+pub fn is_shutdown() -> impl Future<Output = ()> {
+    SHUTDOWN.notified()
+}
+
 fn main() {
     let _logger = Logger::try_with_str("info")
         .unwrap()
@@ -149,14 +185,16 @@ fn main() {
 
         let server = Server::bind(&addr)
             .serve(make_service)
-            .with_graceful_shutdown(SHUTDOWN.notified());
+            .with_graceful_shutdown(is_shutdown());
 
         if let Err(err) = server.await {
             error!("server error: {}", err);
         }
     });
 
-    runtime.block_on(SHUTDOWN.notified());
+    runtime.spawn(smp_commands::run());
+
+    runtime.block_on(is_shutdown());
 
     if IS_UPDATING.load(Ordering::Acquire) {
         let args: Vec<_> = env::args_os().collect();
