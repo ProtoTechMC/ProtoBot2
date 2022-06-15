@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 flexi_logger = { version = "0.22.5", default_features = false, features = ["compress"] }
 futures = "0.3.21"
+git-version = "0.3.5"
 hyper = { version = "0.14.19", features = ["http1", "http2", "server", "stream", "tcp"] }
 lazy_static = "1.4.0"
 log = "0.4.17"

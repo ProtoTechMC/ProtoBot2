@@ -3,6 +3,7 @@ mod smp_commands;
 
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use futures::TryStreamExt;
+use git_version::git_version;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Method, Request, Response, Server, StatusCode};
 use lazy_static::lazy_static;
@@ -169,6 +170,8 @@ fn main() {
         .start()
         .expect("Failed to initialize logger");
     log_panics::init();
+
+    info!("Starting protobot {}", git_version!());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config::get().port));
 

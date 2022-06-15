@@ -1,0 +1,35 @@
+on:
+  push:
+    branches:
+      - master
+
+name: Release
+
+jobs:
+  build:
+    name: Build on ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          override: true
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - uses: actions/upload-artifact@v3
+        with:
+          name: protobot
+          path: target/release/protobot
+      - uses: fjogeleit/http-request-action@v1
+        with:
+          url: 'https://panel.cloudtechmc.com:50014/update'
+          method: 'PUT'
+          customHeaders: '{"Authorization": "Bearer ${{ secrets.PTERODACTYL_UPDATE_KEY }}"}'
+          file: target/release/protobot
