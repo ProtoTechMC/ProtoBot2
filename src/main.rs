@@ -7,7 +7,9 @@ use hyper::{http, Body, Method, Request, Response, Server, StatusCode};
 use lazy_static::lazy_static;
 use log::{error, info};
 use std::fmt::{Display, Formatter};
+use std::fs::Permissions;
 use std::net::SocketAddr;
+use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, error, io, process};
 use tokio::sync::Notify;
@@ -89,7 +91,8 @@ async fn update(request: Request<Body>) -> Result<Response<Body>, Error> {
     let program_name = env::args()
         .next()
         .expect("Program called with no arguments?");
-    tokio::fs::rename("protobot_updated", program_name).await?;
+    tokio::fs::set_permissions("protobot_updated", Permissions::from_mode(0o777)).await?;
+    tokio::fs::rename("protobot_updated", program_name.clone()).await?;
 
     shutdown();
 
