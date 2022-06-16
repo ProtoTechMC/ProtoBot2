@@ -199,7 +199,13 @@ fn main() {
         .build()
         .expect("Failed to build runtime");
 
-    runtime.spawn(async move {
+    runtime.spawn(async {
+        if let Err(err) = smp_commands::run().await {
+            error!("websocket error: {}", err);
+        }
+    });
+
+    runtime.block_on(async move {
         let make_service = make_service_fn(|_conn| async {
             Ok::<_, Error>(service_fn(|req| async {
                 let result = on_http_request(req).await;
@@ -218,14 +224,6 @@ fn main() {
             error!("server error: {}", err);
         }
     });
-
-    runtime.spawn(async {
-        if let Err(err) = smp_commands::run().await {
-            error!("websocket error: {}", err);
-        }
-    });
-
-    runtime.block_on(is_shutdown());
 
     if IS_UPDATING.load(Ordering::Acquire) {
         let args: Vec<_> = env::args_os().collect();
