@@ -1,97 +1,45 @@
 mod config;
+mod discord_bot;
 mod smp_commands;
 
 use ed25519_dalek::{PublicKey, Verifier};
-use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
+use flexi_logger::filter::{LogLineFilter, LogLineWriter};
+use flexi_logger::{
+    Age, Cleanup, Criterion, DeferredNow, Duplicate, FileSpec, Logger, Naming, WriteMode,
+};
 use futures::TryStreamExt;
 use git_version::git_version;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Method, Request, Response, Server, StatusCode};
 use lazy_static::lazy_static;
-use log::{error, info, warn};
-use std::fmt::{Display, Formatter};
+use log::{error, info, warn, Level, Record};
 use std::fs::Permissions;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{env, error, io, process};
+use std::{env, io, process};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Notify;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 enum Error {
-    Io(io::Error),
-    Http(http::Error),
-    Hyper(hyper::Error),
-    Reqwest(reqwest::Error),
-    Tungstenite(tokio_tungstenite::tungstenite::Error),
-    Json(serde_json::Error),
+    #[error("I/O Error: {0}")]
+    Io(#[from] io::Error),
+    #[error("HTTP Error: {0}")]
+    Http(#[from] http::Error),
+    #[error("Hyper Error: {0}")]
+    Hyper(#[from] hyper::Error),
+    #[error("HTTP Request Error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Websocket Error: {0}")]
+    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+    #[error("Json Error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("Discord Error: {0}")]
+    Serenity(#[from] serenity::Error),
+    #[error("Other Error: {0}")]
     Other(String),
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::Io(err)
-    }
-}
-
-impl From<http::Error> for Error {
-    fn from(err: http::Error) -> Self {
-        Error::Http(err)
-    }
-}
-
-impl From<hyper::Error> for Error {
-    fn from(err: hyper::Error) -> Self {
-        Error::Hyper(err)
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(err: reqwest::Error) -> Self {
-        Error::Reqwest(err)
-    }
-}
-
-impl From<tokio_tungstenite::tungstenite::Error> for Error {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Error::Tungstenite(err)
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Error::Json(err)
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Io(err) => write!(f, "I/O Error: {}", err),
-            Error::Http(err) => write!(f, "HTTP Error: {}", err),
-            Error::Hyper(err) => write!(f, "Hyper Error: {}", err),
-            Error::Reqwest(err) => write!(f, "HTTP Request Error: {}", err),
-            Error::Tungstenite(err) => write!(f, "Websocket Error: {:?}", err),
-            Error::Json(err) => write!(f, "Json Error: {}", err),
-            Error::Other(err) => write!(f, "Other Error: {}", err),
-        }
-    }
-}
-
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Error::Io(err) => Some(err),
-            Error::Http(err) => Some(err),
-            Error::Hyper(err) => Some(err),
-            Error::Reqwest(err) => Some(err),
-            Error::Tungstenite(err) => Some(err),
-            Error::Json(err) => Some(err),
-            Error::Other(_) => None,
-        }
-    }
 }
 
 static IS_UPDATING: AtomicBool = AtomicBool::new(false);
@@ -174,8 +122,30 @@ pub fn is_shutdown() -> impl Future<Output = ()> {
 }
 
 fn main() {
+    struct SerenityFilter;
+    impl LogLineFilter for SerenityFilter {
+        fn write(
+            &self,
+            now: &mut DeferredNow,
+            record: &Record,
+            log_line_writer: &dyn LogLineWriter,
+        ) -> io::Result<()> {
+            let mut should_log = true;
+            if let Some(module_path) = record.module_path() {
+                if module_path.starts_with("serenity") {
+                    should_log = record.level() < Level::Info;
+                }
+            }
+            return if should_log {
+                log_line_writer.write(now, record)
+            } else {
+                Ok(())
+            };
+        }
+    }
     let _logger = Logger::try_with_str("info")
         .unwrap()
+        .filter(Box::new(SerenityFilter))
         .log_to_file(FileSpec::default().directory("logs"))
         .write_mode(WriteMode::BufferAndFlush)
         .duplicate_to_stderr(Duplicate::All)
@@ -199,9 +169,21 @@ fn main() {
         .build()
         .expect("Failed to build runtime");
 
+    if env::var("DISABLE_SMP_COMMANDS")
+        .ok()
+        .and_then(|var| var.parse::<bool>().ok())
+        != Some(true)
+    {
+        runtime.spawn(async {
+            if let Err(err) = smp_commands::run().await {
+                error!("websocket error: {}", err);
+            }
+        });
+    }
+
     runtime.spawn(async {
-        if let Err(err) = smp_commands::run().await {
-            error!("websocket error: {}", err);
+        if let Err(err) = discord_bot::run().await {
+            error!("discord bot error: {}", err);
         }
     });
 

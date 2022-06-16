@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use serde::Deserialize;
+use serenity::model::id::GuildId;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::{error, io};
@@ -14,6 +15,8 @@ pub fn get() -> &'static Config {
 
 #[derive(Deserialize)]
 pub struct Config {
+    pub discord_token: String,
+    pub guild_id: GuildId,
     pub listen_ip: String,
     pub update_pubkey: String,
     pub pterodactyl_domain: String,
