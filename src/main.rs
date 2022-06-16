@@ -121,11 +121,7 @@ async fn update(request: Request<Body>) -> Result<Response<Body>, Error> {
     )
     .await?;
 
-    let program_name = env::args()
-        .next()
-        .expect("Program called with no arguments?");
     tokio::fs::set_permissions("protobot_updated", Permissions::from_mode(0o777)).await?;
-    tokio::fs::rename("protobot_updated", program_name.clone()).await?;
 
     shutdown();
 
