@@ -7,7 +7,7 @@ use git_version::git_version;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{http, Body, Method, Request, Response, Server, StatusCode};
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
 use std::fs::Permissions;
 use std::future::Future;
@@ -179,8 +179,15 @@ fn main() {
         .expect("Failed to build runtime");
 
     runtime.spawn(async move {
-        let make_service =
-            make_service_fn(|_conn| async { Ok::<_, Error>(service_fn(on_http_request)) });
+        let make_service = make_service_fn(|_conn| async {
+            Ok::<_, Error>(service_fn(|req| async {
+                let result = on_http_request(req).await;
+                if let Err(err) = &result {
+                    warn!("Failed to process request: {}", err);
+                }
+                result
+            }))
+        });
 
         let server = Server::bind(&addr)
             .serve(make_service)
