@@ -116,6 +116,10 @@ async fn refresh_token() -> Result<Token, crate::Error> {
         .send()
         .await?;
 
+    if !response.status().is_success() {
+        return Err(crate::Error::Other(format!("Websocket auth returned status code {}", response.status())));
+    }
+
     #[derive(Deserialize)]
     struct ResponseData {
         data: Token,
