@@ -1,8 +1,14 @@
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 fn main() {
     loop {
-        let result = Command::new("protobot")
+        if let Err(err) = std::fs::set_permissions("./protobot", Permissions::from_mode(0o777)) {
+            eprintln!("Failed to set permissions: {}", err);
+            break;
+        }
+        let result = Command::new("./protobot")
             .status()
             .expect("Failed to execute protobot process");
         if !result.success() {
