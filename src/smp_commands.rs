@@ -1,4 +1,4 @@
-use crate::config;
+use crate::{config, StatusCode};
 use futures::{Sink, SinkExt, StreamExt};
 use log::{info, warn};
 use nom::bytes::complete::{tag, take_until1};
@@ -26,7 +26,7 @@ where
 {
     info!("Sending command {} to server", command);
     let json = WsJson {
-        event: "send_command".to_owned(),
+        event: "send command".to_owned(),
         args: vec![command.to_owned()],
     };
     socket
@@ -74,9 +74,9 @@ where
             tuple((
                 char('['),
                 digit1,
-                char(','),
+                char(':'),
                 digit1,
-                char(','),
+                char(':'),
                 digit1,
                 tag("] [Server thread/INFO]: <"),
             )),
@@ -167,7 +167,7 @@ pub(crate) async fn run() -> Result<(), crate::Error> {
     } = refresh_token().await?;
 
     let (mut socket, response) = tokio_tungstenite::connect_async(ws_url).await?;
-    if !response.status().is_success() {
+    if response.status() != StatusCode::SWITCHING_PROTOCOLS {
         return Err(crate::Error::Other(format!(
             "Websocket returned status code {}",
             response.status()

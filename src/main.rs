@@ -195,7 +195,11 @@ fn main() {
         }
     });
 
-    runtime.spawn(smp_commands::run());
+    runtime.spawn(async {
+        if let Err(err) = smp_commands::run().await {
+            error!("websocket error: {}", err);
+        }
+    });
 
     runtime.block_on(is_shutdown());
 
