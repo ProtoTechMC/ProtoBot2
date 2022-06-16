@@ -169,9 +169,9 @@ fn main() {
 
     info!("Starting protobot {}", git_version!());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], config::get().port));
+    let addr: SocketAddr = config::get().listen_ip.parse().unwrap();
 
-    info!("Listening on http://{}", addr);
+    info!("Listening on {}", addr);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
