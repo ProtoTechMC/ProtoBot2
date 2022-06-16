@@ -1,6 +1,7 @@
 mod config;
 mod smp_commands;
 
+use ed25519_dalek::{PublicKey, Verifier};
 use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use futures::TryStreamExt;
 use git_version::git_version;
@@ -15,13 +16,14 @@ use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, error, io, process};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Notify;
-use tokio_util::io::StreamReader;
 
 #[derive(Debug)]
 enum Error {
     Io(io::Error),
     Http(http::Error),
+    Hyper(hyper::Error),
     Reqwest(reqwest::Error),
     Tungstenite(tokio_tungstenite::tungstenite::Error),
     Json(serde_json::Error),
@@ -37,6 +39,12 @@ impl From<io::Error> for Error {
 impl From<http::Error> for Error {
     fn from(err: http::Error) -> Self {
         Error::Http(err)
+    }
+}
+
+impl From<hyper::Error> for Error {
+    fn from(err: hyper::Error) -> Self {
+        Error::Hyper(err)
     }
 }
 
@@ -63,6 +71,7 @@ impl Display for Error {
         match self {
             Error::Io(err) => write!(f, "I/O Error: {}", err),
             Error::Http(err) => write!(f, "HTTP Error: {}", err),
+            Error::Hyper(err) => write!(f, "Hyper Error: {}", err),
             Error::Reqwest(err) => write!(f, "HTTP Request Error: {}", err),
             Error::Tungstenite(err) => write!(f, "Websocket Error: {:?}", err),
             Error::Json(err) => write!(f, "Json Error: {}", err),
@@ -76,6 +85,7 @@ impl error::Error for Error {
         match self {
             Error::Io(err) => Some(err),
             Error::Http(err) => Some(err),
+            Error::Hyper(err) => Some(err),
             Error::Reqwest(err) => Some(err),
             Error::Tungstenite(err) => Some(err),
             Error::Json(err) => Some(err),
@@ -93,16 +103,19 @@ async fn update(request: Request<Body>) -> Result<Response<Body>, Error> {
             .body("Must use PUT".into())?);
     }
 
-    let token = request
+    let signature: ed25519_dalek::Signature = match request
         .headers()
-        .get("Authorization")
+        .get("Signature")
         .and_then(|header| header.to_str().ok())
-        .and_then(|header| header.strip_prefix("Bearer "));
-    if token != Some(&config::get().github_token) {
-        return Ok(Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .body("Invalid token".into())?);
-    }
+        .and_then(|sig| sig.parse().ok())
+    {
+        Some(sig) => sig,
+        None => {
+            return Ok(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .body("Missing signature".into())?);
+        }
+    };
 
     if IS_UPDATING.swap(true, Ordering::AcqRel) {
         return Ok(Response::builder()
@@ -110,16 +123,24 @@ async fn update(request: Request<Body>) -> Result<Response<Body>, Error> {
             .body("Already updating".into())?);
     }
 
+    let data = request
+        .into_body()
+        .try_fold(Vec::new(), |mut a, b| async move {
+            a.extend_from_slice(&b);
+            Ok(a)
+        })
+        .await?;
+
+    let update_pubkey =
+        PublicKey::from_bytes(&base64::decode(&config::get().update_pubkey).unwrap()).unwrap();
+    if let Err(err) = update_pubkey.verify(&data, &signature) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(format!("Invalid signature {}", err).into())?);
+    }
+
     let mut file = tokio::fs::File::create("protobot_updated").await?;
-    tokio::io::copy(
-        &mut StreamReader::new(
-            request
-                .into_body()
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err)),
-        ),
-        &mut file,
-    )
-    .await?;
+    file.write_all(&data).await?;
 
     tokio::fs::set_permissions("protobot_updated", Permissions::from_mode(0o777)).await?;
 

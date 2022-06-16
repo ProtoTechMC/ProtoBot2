@@ -1,5 +1,6 @@
 /config.json
 /target
+/protobot_sender/target
 /protobot_wrapper/target
 /.idea/
 /logs/

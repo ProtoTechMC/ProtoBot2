@@ -27,9 +27,4 @@ jobs:
         with:
           name: protobot
           path: target/release/protobot
-      - uses: fjogeleit/http-request-action@v1
-        with:
-          url: 'https://panel.cloudtechmc.com:50014/update'
-          method: 'PUT'
-          customHeaders: '{"Authorization": "Bearer ${{ secrets.PTERODACTYL_UPDATE_KEY }}"}'
-          file: target/release/protobot
+      - run: ".github/protobot_sender http://panel.cloudtechmc.com:50014 target/release/protobot ${{ secrets.PTERODACTYL_UPDATE_KEY }}"
