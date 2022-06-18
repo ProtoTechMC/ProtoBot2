@@ -8,12 +8,12 @@ use flexi_logger::{
     Age, Cleanup, Criterion, DeferredNow, Duplicate, FileSpec, Logger, Naming, WriteMode,
 };
 use git_version::git_version;
+use hyper::http;
 use lazy_static::lazy_static;
 use log::{error, info, Level, Record};
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, io, process};
-use hyper::http;
 use tokio::sync::Notify;
 
 #[derive(Debug, thiserror::Error)]
@@ -22,6 +22,8 @@ enum Error {
     Io(#[from] io::Error),
     #[error("HTTP Error: {0}")]
     Http(#[from] http::Error),
+    #[error("TLS Error: {0}")]
+    Rustls(#[from] rustls::Error),
     #[error("Hyper Error: {0}")]
     Hyper(#[from] hyper::Error),
     #[error("HTTP Request Error: {0}")]
@@ -73,11 +75,11 @@ fn main() {
                     should_log = record.level() < Level::Info;
                 }
             }
-            return if should_log {
+            if should_log {
                 log_line_writer.write(now, record)
             } else {
                 Ok(())
-            };
+            }
         }
     }
     let _logger = Logger::try_with_str("info")
@@ -120,7 +122,11 @@ fn main() {
         }
     });
 
-    runtime.block_on(webserver::run());
+    runtime.block_on(async {
+        if let Err(err) = webserver::run().await {
+            error!("webserver error: {}", err);
+        }
+    });
 
     if is_updating() {
         let args: Vec<_> = env::args_os().collect();

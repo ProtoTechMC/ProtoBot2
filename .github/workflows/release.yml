@@ -27,4 +27,4 @@ jobs:
         with:
           name: protobot
           path: target/release/protobot
-      - run: ".github/protobot_sender http://panel.cloudtechmc.com:50014/update target/release/protobot ${{ secrets.PTERODACTYL_UPDATE_KEY }}"
+      - run: ".github/protobot_sender https://proto.cloudtechmc.com/update target/release/protobot ${{ secrets.PTERODACTYL_UPDATE_KEY }}"
