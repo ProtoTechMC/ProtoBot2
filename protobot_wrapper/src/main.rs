@@ -15,10 +15,6 @@ fn main() {
             eprintln!("protobot exited with exit code {}", result);
             break;
         }
-        if let Err(err) = std::fs::remove_file("protobot") {
-            eprintln!("Failed to remove old executable: {}", err);
-            break;
-        }
         if let Err(err) = std::fs::rename("protobot_updated", "protobot") {
             if err.kind() != std::io::ErrorKind::NotFound {
                 eprintln!("Error moving protobot_updated over protobot: {}", err);
