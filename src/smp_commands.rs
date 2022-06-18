@@ -1,4 +1,4 @@
-use crate::{config, StatusCode};
+use crate::config;
 use futures::{Sink, SinkExt, StreamExt};
 use log::{info, warn};
 use nom::bytes::complete::{tag, take_until1};
@@ -8,6 +8,7 @@ use nom::multi::many1;
 use nom::sequence::tuple;
 use nom::Finish;
 use serde::{Deserialize, Serialize};
+use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Deserialize, Serialize)]
