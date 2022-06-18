@@ -16,6 +16,8 @@ pub struct Config {
     pub discord_token: String,
     pub guild_id: GuildId,
     pub listen_ip: String,
+    #[serde(default)]
+    pub use_https: bool,
     pub update_pubkey: String,
     pub pterodactyl_domain: String,
     pub pterodactyl_server_id: String,

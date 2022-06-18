@@ -81,48 +81,58 @@ async fn on_http_request(request: Request<Body>) -> Result<Response<Body>, crate
     }
 }
 
+macro_rules! run_service {
+    () => {
+        async {
+            Ok::<_, crate::Error>(service_fn(|req| async {
+                let result = on_http_request(req).await;
+                if let Err(err) = &result {
+                    warn!("Failed to process request: {}", err);
+                }
+                result
+            }))
+        }
+    };
+}
+
 pub(crate) async fn run() -> Result<(), crate::Error> {
     let addr: SocketAddr = config::get().listen_ip.parse().unwrap();
 
-    info!("Listening on {}", addr);
+    if !config::get().use_https {
+        let server = Server::bind(&addr)
+            .serve(make_service_fn(|_conn| run_service!()))
+            .with_graceful_shutdown(crate::is_shutdown());
+        info!("Listening on http://{}", addr);
+        server.await?;
+    } else {
+        let tls_cfg = {
+            let certfile = std::fs::File::open("cert.pem")?;
+            let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(certfile))?;
+            let certs: Vec<_> = certs.into_iter().map(rustls::Certificate).collect();
 
-    let tls_cfg = {
-        let certfile = std::fs::File::open("cert.pem")?;
-        let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(certfile))?;
-        let certs: Vec<_> = certs.into_iter().map(rustls::Certificate).collect();
-
-        let keyfile = std::fs::File::open("privkey.pem")?;
-        let keys = rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(keyfile))?;
-        if keys.len() != 1 {
-            return Err(crate::Error::Other(
-                "Expected a single private key".to_owned(),
-            ));
-        }
-        let private_key = rustls::PrivateKey(keys.into_iter().next().unwrap());
-
-        let mut cfg = rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certs, private_key)?;
-        cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-        Arc::new(cfg)
-    };
-
-    let make_service = make_service_fn(|_conn| async {
-        Ok::<_, crate::Error>(service_fn(|req| async {
-            let result = on_http_request(req).await;
-            if let Err(err) = &result {
-                warn!("Failed to process request: {}", err);
+            let keyfile = std::fs::File::open("privkey.pem")?;
+            let keys = rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(keyfile))?;
+            if keys.len() != 1 {
+                return Err(crate::Error::Other(
+                    "Expected a single private key".to_owned(),
+                ));
             }
-            result
-        }))
-    });
+            let private_key = rustls::PrivateKey(keys.into_iter().next().unwrap());
 
-    let server = Server::builder(TlsAcceptor::new(tls_cfg, AddrIncoming::bind(&addr)?))
-        .serve(make_service)
-        .with_graceful_shutdown(crate::is_shutdown());
+            let mut cfg = rustls::ServerConfig::builder()
+                .with_safe_defaults()
+                .with_no_client_auth()
+                .with_single_cert(certs, private_key)?;
+            cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+            Arc::new(cfg)
+        };
 
-    server.await?;
+        let server = Server::builder(TlsAcceptor::new(tls_cfg, AddrIncoming::bind(&addr)?))
+            .serve(make_service_fn(|_conn| run_service!()))
+            .with_graceful_shutdown(crate::is_shutdown());
+        info!("Listening on https://{}", addr);
+        server.await?;
+    }
 
     Ok(())
 }
