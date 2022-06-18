@@ -87,7 +87,7 @@ pub(crate) async fn run() -> Result<(), crate::Error> {
     info!("Listening on {}", addr);
 
     let tls_cfg = {
-        let certfile = std::fs::File::open("chain.pem")?;
+        let certfile = std::fs::File::open("cert.pem")?;
         let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(certfile))?;
         let certs: Vec<_> = certs.into_iter().map(rustls::Certificate).collect();
 
