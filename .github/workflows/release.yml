@@ -38,3 +38,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Restart Pterodactyl Server
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: 'https://panel.cloudtechmc.com/api/client/servers/b50cdd05/power'
+          method: POST
+          customHeaders: '{"Accept":"application/json","Content-Type":"application/json","Authorization":"Bearer ${{ secrets.PTERODACTYL_UPDATE_KEY }}"}'
+          data: '{"signal":"restart"}'
