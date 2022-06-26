@@ -9,6 +9,8 @@ use nom::sequence::tuple;
 use nom::Finish;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 #[derive(Deserialize, Serialize)]
 struct WsJson {
@@ -165,6 +167,12 @@ where
 }
 
 pub(crate) async fn run() -> Result<(), crate::Error> {
+    while websocket_session().await? == WebsocketSessionResult::Continue {
+    }
+    Ok(())
+}
+
+async fn websocket_session() -> Result<WebsocketSessionResult, crate::Error> {
     let Token {
         token,
         socket: ws_url,
@@ -179,10 +187,16 @@ pub(crate) async fn run() -> Result<(), crate::Error> {
     }
     send_token(&mut socket, token).await?;
 
+    let restart_time = tokio::time::Instant::now() + tokio::time::Duration::from_secs(6 * 60 * 60);
     loop {
         tokio::select! {
             _ = crate::is_shutdown() => {
-                return Ok(());
+                return Ok(WebsocketSessionResult::Stop);
+            }
+            _ = tokio::time::sleep_until(restart_time) => {
+                info!("Restarting websocket");
+                socket.close(Some(CloseFrame{code: CloseCode::Normal, reason: "".into()})).await?;
+                return Ok(WebsocketSessionResult::Continue);
             }
             message = socket.next() => {
                 match message {
@@ -193,10 +207,16 @@ pub(crate) async fn run() -> Result<(), crate::Error> {
                     }
                     None => {
                         warn!("Disconnected from websocket");
-                        return Ok(());
+                        return Ok(WebsocketSessionResult::Stop);
                     }
                 }
             }
         }
     }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum WebsocketSessionResult {
+    Continue,
+    Stop,
 }

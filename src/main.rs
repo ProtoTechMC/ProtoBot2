@@ -136,11 +136,11 @@ fn main() {
                     should_log = record.level() < Level::Info;
                 }
             }
-            return if should_log {
+            if should_log {
                 log_line_writer.write(now, record)
             } else {
                 Ok(())
-            };
+            }
         }
     }
     let _logger = Logger::try_with_str("info")
