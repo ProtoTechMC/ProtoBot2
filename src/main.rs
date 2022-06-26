@@ -109,11 +109,13 @@ fn main() {
         .and_then(|var| var.parse::<bool>().ok())
         != Some(true)
     {
-        runtime.spawn(async {
-            if let Err(err) = smp_commands::run().await {
-                error!("websocket error: {}", err);
-            }
-        });
+        for server_id in &config::get().pterodactyl_server_ids {
+            runtime.spawn(async move {
+                if let Err(err) = smp_commands::run(&server_id[..]).await {
+                    error!("websocket error for server id {}: {}", server_id, err);
+                }
+            });
+        }
     }
 
     runtime.spawn(async {

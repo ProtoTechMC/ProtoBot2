@@ -20,7 +20,7 @@ pub struct Config {
     pub use_https: bool,
     pub update_pubkey: String,
     pub pterodactyl_domain: String,
-    pub pterodactyl_server_id: String,
+    pub pterodactyl_server_ids: Vec<String>,
     pub pterodactyl_api_key: String,
 }
 

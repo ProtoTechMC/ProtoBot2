@@ -103,12 +103,12 @@ struct Token {
     socket: String,
 }
 
-async fn refresh_token() -> Result<Token, crate::Error> {
+async fn refresh_token(server_id: &str) -> Result<Token, crate::Error> {
     let config = config::get();
     let response = reqwest::Client::new()
         .get(format!(
             "https://{}/api/client/servers/{}/websocket",
-            &config.pterodactyl_domain, &config.pterodactyl_server_id
+            &config.pterodactyl_domain, server_id
         ))
         .header("Accept", "application/json")
         .header("Content-Type", "application/json")
@@ -147,6 +147,7 @@ async fn send_token<S: Sink<Message> + Unpin>(
 
 async fn handle_websocket_message<S: Sink<Message> + Unpin>(
     socket: &mut S,
+    server_id: &str,
     message: String,
 ) -> Result<(), crate::Error>
 where
@@ -161,7 +162,7 @@ where
             handle_server_log(socket, &json.args[0]).await?;
         }
         "token expiring" => {
-            let token = refresh_token().await?.token;
+            let token = refresh_token(server_id).await?.token;
             send_token(socket, token).await?;
         }
         _ => {}
@@ -170,22 +171,24 @@ where
     Ok(())
 }
 
-pub(crate) async fn run() -> Result<(), crate::Error> {
-    while websocket_session().await? == WebsocketSessionResult::Continue {
+pub(crate) async fn run(server_id: &str) -> Result<(), crate::Error> {
+    info!("Starting websocket for server id {}", server_id);
+    while websocket_session(server_id).await? == WebsocketSessionResult::Continue {
     }
     Ok(())
 }
 
-async fn websocket_session() -> Result<WebsocketSessionResult, crate::Error> {
+async fn websocket_session(server_id: &str) -> Result<WebsocketSessionResult, crate::Error> {
     let Token {
         token,
         socket: ws_url,
-    } = refresh_token().await?;
+    } = refresh_token(server_id).await?;
 
     let (mut socket, response) = tokio_tungstenite::connect_async(ws_url).await?;
     if response.status() != StatusCode::SWITCHING_PROTOCOLS {
         return Err(crate::Error::Other(format!(
-            "Websocket returned status code {}",
+            "Websocket for server id {} returned status code {}",
+            server_id,
             response.status()
         )));
     }
@@ -198,7 +201,7 @@ async fn websocket_session() -> Result<WebsocketSessionResult, crate::Error> {
                 return Ok(WebsocketSessionResult::Stop);
             }
             _ = tokio::time::sleep_until(restart_time) => {
-                info!("Restarting websocket");
+                info!("Restarting websocket for server {}", server_id);
                 socket.close(Some(CloseFrame{code: CloseCode::Normal, reason: "".into()})).await?;
                 return Ok(WebsocketSessionResult::Continue);
             }
@@ -206,11 +209,11 @@ async fn websocket_session() -> Result<WebsocketSessionResult, crate::Error> {
                 match message {
                     Some(result) => {
                         if let Message::Text(text) = result? {
-                            handle_websocket_message(&mut socket, text).await?;
+                            handle_websocket_message(&mut socket, server_id, text).await?;
                         }
                     }
                     None => {
-                        warn!("Disconnected from websocket");
+                        warn!("Disconnected from websocket for server {}", server_id);
                         return Ok(WebsocketSessionResult::Stop);
                     }
                 }
