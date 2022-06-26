@@ -1,17 +1,19 @@
 use crate::config;
 use futures::{Sink, SinkExt, StreamExt};
-use log::{info, warn};
+use log::{error, info, warn};
 use nom::bytes::complete::{tag, take_until1};
 use nom::character::complete::{anychar, char, digit1};
 use nom::combinator::{map, recognize};
 use nom::multi::many1;
 use nom::sequence::tuple;
 use nom::Finish;
+use reqwest::Method;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite::http::StatusCode;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Deserialize, Serialize)]
 struct WsJson {
@@ -38,8 +40,102 @@ where
     Ok(())
 }
 
+async fn create_backup<S: Sink<Message> + Unpin>(
+    socket: &mut S,
+    server_id: &str,
+    name: Option<String>,
+) -> Result<(), crate::Error>
+where
+    crate::Error: From<S::Error>,
+{
+    #[derive(Deserialize)]
+    struct FeatureLimits {
+        backups: u32,
+    }
+
+    #[derive(Deserialize)]
+    struct ServerAttributes {
+        feature_limits: FeatureLimits,
+    }
+
+    #[derive(Deserialize)]
+    struct ServerSettings {
+        attributes: ServerAttributes,
+    }
+
+    let backup_limit = request::<ServerSettings>(server_id, Method::GET, "")
+        .await?
+        .attributes
+        .feature_limits
+        .backups;
+
+    #[derive(Deserialize)]
+    struct BackupAttributes {
+        #[serde(default)]
+        is_locked: bool,
+        uuid: String,
+    }
+
+    #[derive(Deserialize)]
+    struct Backup {
+        attributes: BackupAttributes,
+    }
+
+    #[derive(Deserialize)]
+    struct BackupMeta {
+        backup_count: u32,
+    }
+
+    #[derive(Deserialize)]
+    struct Backups {
+        data: Vec<Backup>,
+        meta: BackupMeta,
+    }
+
+    let backups = request::<Backups>(server_id, Method::GET, "backups").await?;
+
+    let mut backup_count = backups.meta.backup_count;
+    while backup_limit > 0 && backup_count >= backup_limit {
+        for backup in &backups.data {
+            if backup.attributes.is_locked {
+                continue;
+            }
+
+            request::<()>(
+                server_id,
+                Method::DELETE,
+                &format!("backups/{}", backup.attributes.uuid),
+            )
+            .await?;
+            backup_count -= 1;
+        }
+    }
+
+    #[derive(Serialize)]
+    struct CreatedBackup {
+        name: String,
+    }
+
+    request_with_body::<(), CreatedBackup>(
+        server_id,
+        Method::POST,
+        "backups",
+        name.map(|name| CreatedBackup { name }).as_ref(),
+    )
+    .await?;
+
+    send_command(
+        socket,
+        "tellraw @a \"Backup being created. Wait a minute to be sure the backup has finished\"",
+    )
+    .await?;
+
+    Ok(())
+}
+
 async fn handle_chat_message<S: Sink<Message> + Unpin>(
     socket: &mut S,
+    server_id: &str,
     sender: &str,
     message: &str,
 ) -> Result<(), crate::Error>
@@ -49,16 +145,31 @@ where
     if let Some(command) = message.strip_prefix('!') {
         info!("Received command {} from {}", command, sender);
         let args: Vec<_> = command.split(' ').collect();
-        if args[0] == "s" {
-            if args.len() > 1 {
-                send_command(
+        match args[0] {
+            "s" => {
+                if args.len() > 1 {
+                    send_command(
+                        socket,
+                        &format!("scoreboard objectives setdisplay sidebar {}", args[1]),
+                    )
+                    .await?;
+                } else {
+                    send_command(socket, "scoreboard objectives setdisplay sidebar").await?;
+                }
+            }
+            "backup" => {
+                create_backup(
                     socket,
-                    &format!("scoreboard objectives setdisplay sidebar {}", args[1]),
+                    server_id,
+                    if args.len() > 1 {
+                        Some(args[1..].join(" "))
+                    } else {
+                        None
+                    },
                 )
                 .await?;
-            } else {
-                send_command(socket, "scoreboard objectives setdisplay sidebar").await?;
             }
+            _ => {}
         }
     }
 
@@ -67,6 +178,7 @@ where
 
 async fn handle_server_log<S: Sink<Message> + Unpin>(
     socket: &mut S,
+    server_id: &str,
     message: &str,
 ) -> Result<(), crate::Error>
 where
@@ -91,7 +203,7 @@ where
     )(message)
     .finish();
     if let Ok((_, (sender, message))) = parse_result {
-        handle_chat_message(socket, sender, message).await?;
+        handle_chat_message(socket, server_id, sender, message).await?;
     }
 
     Ok(())
@@ -103,34 +215,58 @@ struct Token {
     socket: String,
 }
 
-async fn refresh_token(server_id: &str) -> Result<Token, crate::Error> {
+async fn request<T: DeserializeOwned>(
+    server_id: &str,
+    method: Method,
+    endpoint: &str,
+) -> Result<T, crate::Error> {
+    request_with_body::<T, ()>(server_id, method, endpoint, None).await
+}
+
+async fn request_with_body<T: DeserializeOwned, B: Serialize>(
+    server_id: &str,
+    method: Method,
+    endpoint: &str,
+    body: Option<&B>,
+) -> Result<T, crate::Error> {
     let config = config::get();
-    let response = reqwest::Client::new()
-        .get(format!(
-            "https://{}/api/client/servers/{}/websocket",
-            &config.pterodactyl_domain, server_id
-        ))
+    let mut request = reqwest::Client::new()
+        .request(
+            method,
+            format!(
+                "https://{}/api/client/servers/{}/{}",
+                &config.pterodactyl_domain, server_id, endpoint
+            ),
+        )
         .header("Accept", "application/json")
         .header("Content-Type", "application/json")
         .header(
             "Authorization",
             format!("Bearer {}", config.pterodactyl_api_key),
-        )
-        .send()
-        .await?;
+        );
+    if let Some(body) = body {
+        request = request.body(serde_json::to_string(body)?);
+    }
+    let response = request.send().await?;
 
     if !response.status().is_success() {
         return Err(crate::Error::Other(format!(
-            "Websocket auth returned status code {}",
+            "Websocket request for server {} returned status code {}",
+            server_id,
             response.status()
         )));
     }
+    Ok(response.json::<T>().await?)
+}
 
+async fn refresh_token(server_id: &str) -> Result<Token, crate::Error> {
     #[derive(Deserialize)]
     struct ResponseData {
         data: Token,
     }
-    Ok(response.json::<ResponseData>().await?.data)
+    Ok(request::<ResponseData>(server_id, Method::GET, "websocket")
+        .await?
+        .data)
 }
 
 async fn send_token<S: Sink<Message> + Unpin>(
@@ -159,11 +295,14 @@ where
             if json.args.is_empty() {
                 return Err(crate::Error::Other("Console output empty".to_owned()));
             }
-            handle_server_log(socket, &json.args[0]).await?;
+            handle_server_log(socket, &json.args[0], server_id).await?;
         }
         "token expiring" => {
             let token = refresh_token(server_id).await?.token;
             send_token(socket, token).await?;
+        }
+        "token expired" => {
+            error!("Token expired on server {}", server_id);
         }
         _ => {}
     }
@@ -173,8 +312,7 @@ where
 
 pub(crate) async fn run(server_id: &str) -> Result<(), crate::Error> {
     info!("Starting websocket for server id {}", server_id);
-    while websocket_session(server_id).await? == WebsocketSessionResult::Continue {
-    }
+    while websocket_session(server_id).await? == WebsocketSessionResult::Continue {}
     Ok(())
 }
 
