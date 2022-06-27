@@ -118,15 +118,16 @@ fn main() {
     }
 
     let discord_handle = discord_bot.cache_and_http.http.clone();
-    runtime.block_on(async move {
-        if let Err(err) = webserver::run(discord_handle).await {
-            error!("webserver error: {}", err);
-        }
-    });
 
     runtime.spawn(async move {
         if let Err(err) = discord_bot::run(discord_bot).await {
             error!("discord bot error: {}", err);
+        }
+    });
+
+    runtime.block_on(async move {
+        if let Err(err) = webserver::run(discord_handle).await {
+            error!("webserver error: {}", err);
         }
     });
 }
