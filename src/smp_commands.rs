@@ -1,4 +1,5 @@
 use crate::config;
+use async_trait::async_trait;
 use futures::{Sink, SinkExt, StreamExt};
 use log::{error, info, warn};
 use nom::bytes::complete::{tag, take_until1};
@@ -7,7 +8,7 @@ use nom::combinator::{map, recognize};
 use nom::multi::many1;
 use nom::sequence::tuple;
 use nom::Finish;
-use reqwest::Method;
+use reqwest::{Method, Response};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite::http::StatusCode;
@@ -95,19 +96,22 @@ where
     let backups = request::<Backups>(server_id, Method::GET, "backups").await?;
 
     let mut backup_count = backups.meta.backup_count;
-    while backup_limit > 0 && backup_count >= backup_limit {
+    if backup_limit > 0 && backup_count >= backup_limit {
         for backup in &backups.data {
             if backup.attributes.is_locked {
                 continue;
             }
 
-            request::<()>(
+            request::<EmptyResult>(
                 server_id,
                 Method::DELETE,
                 &format!("backups/{}", backup.attributes.uuid),
             )
             .await?;
             backup_count -= 1;
+            if backup_count < backup_limit {
+                break;
+            }
         }
     }
 
@@ -116,7 +120,7 @@ where
         name: String,
     }
 
-    request_with_body::<(), CreatedBackup>(
+    request_with_body::<EmptyResult, CreatedBackup>(
         server_id,
         Method::POST,
         "backups",
@@ -215,7 +219,30 @@ struct Token {
     socket: String,
 }
 
-async fn request<T: DeserializeOwned>(
+#[async_trait]
+trait DecodeResult {
+    async fn decode(response: Response) -> Result<Self, crate::Error>
+    where
+        Self: Sized;
+}
+
+struct EmptyResult;
+
+#[async_trait]
+impl DecodeResult for EmptyResult {
+    async fn decode(_response: Response) -> Result<Self, crate::Error> {
+        Ok(EmptyResult)
+    }
+}
+
+#[async_trait]
+impl<T: DeserializeOwned> DecodeResult for T {
+    async fn decode(response: Response) -> Result<Self, crate::Error> {
+        Ok(response.json::<Self>().await?)
+    }
+}
+
+async fn request<T: DecodeResult>(
     server_id: &str,
     method: Method,
     endpoint: &str,
@@ -223,7 +250,7 @@ async fn request<T: DeserializeOwned>(
     request_with_body::<T, ()>(server_id, method, endpoint, None).await
 }
 
-async fn request_with_body<T: DeserializeOwned, B: Serialize>(
+async fn request_with_body<T: DecodeResult, B: Serialize>(
     server_id: &str,
     method: Method,
     endpoint: &str,
@@ -256,7 +283,7 @@ async fn request_with_body<T: DeserializeOwned, B: Serialize>(
             response.status()
         )));
     }
-    Ok(response.json::<T>().await?)
+    T::decode(response).await
 }
 
 async fn refresh_token(server_id: &str) -> Result<Token, crate::Error> {
@@ -295,7 +322,7 @@ where
             if json.args.is_empty() {
                 return Err(crate::Error::Other("Console output empty".to_owned()));
             }
-            handle_server_log(socket, &json.args[0], server_id).await?;
+            handle_server_log(socket, server_id, &json.args[0]).await?;
         }
         "token expiring" => {
             let token = refresh_token(server_id).await?.token;
