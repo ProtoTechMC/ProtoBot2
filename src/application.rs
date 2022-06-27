@@ -2,13 +2,19 @@ use log::info;
 use serde::Deserialize;
 
 pub(crate) async fn handle_application(application_json: &str) -> Result<(), crate::Error> {
-    let items: Vec<Item> = serde_json::from_str(application_json)?;
-    for (index, item) in items.iter().enumerate() {
+    let app: Application = serde_json::from_str(application_json)?;
+    for (index, item) in app.items.iter().enumerate() {
         info!("Question {}", index + 1);
         info!("{}", item.question);
         info!("> {:?}", item.answer);
     }
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct Application<'a> {
+    url: &'a str,
+    items: Vec<Item<'a>>,
 }
 
 #[derive(Deserialize)]
