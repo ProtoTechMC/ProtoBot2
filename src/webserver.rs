@@ -68,23 +68,21 @@ fn not_found() -> Result<Response<Body>, crate::Error> {
 }
 
 macro_rules! run_service {
-    ($discord_handle:expr) => {
-        {
-            let discord_handle = $discord_handle.clone();
-            async move {
-                Ok::<_, crate::Error>(service_fn(move |req| {
-                    let discord_handle = discord_handle.clone();
-                    async move {
-                        let result = on_http_request(req, &discord_handle).await;
-                        if let Err(err) = &result {
-                            warn!("Failed to process request: {}", err);
-                        }
-                        result
+    ($discord_handle:expr) => {{
+        let discord_handle = $discord_handle.clone();
+        async move {
+            Ok::<_, crate::Error>(service_fn(move |req| {
+                let discord_handle = discord_handle.clone();
+                async move {
+                    let result = on_http_request(req, &discord_handle).await;
+                    if let Err(err) = &result {
+                        warn!("Failed to process request: {}", err);
                     }
-                }))
-            }
+                    result
+                }
+            }))
         }
-    };
+    }};
 }
 
 pub(crate) async fn run(discord_handle: discord_bot::Handle) -> Result<(), crate::Error> {

@@ -16,14 +16,25 @@ pub(crate) async fn handle_application(
                     .description("New submission from application form")
                     .url(app.url)
                     .timestamp(Timestamp::now())
-                    .fields(
-                        app.items
-                            .iter()
-                            .map(|item| (item.question, item.answer.to_str(), false)),
-                    )
+                    .fields(app.items.iter().map(|item| {
+                        let mut answer_str = item.answer.to_str();
+                        if answer_str.is_empty() {
+                            answer_str = "[Empty]".to_owned();
+                        }
+                        (trim(item.question.to_owned(), 256), answer_str, false)
+                    }))
             })
-        }).await?;
+        })
+        .await?;
     Ok(())
+}
+
+fn trim(str: String, max_len: usize) -> String {
+    if str.len() > max_len {
+        format!("{}…", &str[..max_len - 1])
+    } else {
+        str
+    }
 }
 
 #[derive(Deserialize)]
