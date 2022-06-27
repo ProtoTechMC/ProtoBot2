@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.56"
 base64 = "0.13.0"
-ed25519-dalek = "1.0.1"
 flexi_logger = { version = "0.22.5", default_features = false, features = ["compress"] }
 futures = "0.3.21"
 git-version = "0.3.5"

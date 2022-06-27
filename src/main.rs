@@ -13,8 +13,7 @@ use hyper::http;
 use lazy_static::lazy_static;
 use log::{error, info, Level, Record};
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::{env, io, process};
+use std::{env, io};
 use tokio::sync::Notify;
 
 #[derive(Debug, thiserror::Error)]
@@ -44,23 +43,12 @@ enum Error {
 lazy_static! {
     static ref SHUTDOWN: Notify = Notify::new();
 }
-static IS_UPDATING: AtomicBool = AtomicBool::new(false);
-
 pub fn shutdown() {
     SHUTDOWN.notify_waiters();
 }
 
 pub fn is_shutdown() -> impl Future<Output = ()> {
     SHUTDOWN.notified()
-}
-
-/// Returns false if we were already updating
-pub fn update() -> bool {
-    !IS_UPDATING.swap(true, Ordering::AcqRel)
-}
-
-pub fn is_updating() -> bool {
-    IS_UPDATING.load(Ordering::Acquire)
 }
 
 fn main() {
@@ -132,15 +120,4 @@ fn main() {
             error!("webserver error: {}", err);
         }
     });
-
-    if is_updating() {
-        let args: Vec<_> = env::args_os().collect();
-        match process::Command::new(args[0].clone())
-            .args(&args[1..])
-            .spawn()
-        {
-            Ok(_) => info!("Successfully updated"),
-            Err(err) => error!("Failed to update: {}", err),
-        }
-    }
 }
