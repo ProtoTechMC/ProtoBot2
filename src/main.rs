@@ -95,6 +95,14 @@ fn main() {
         .build()
         .expect("Failed to build runtime");
 
+    let discord_bot = match runtime.block_on(discord_bot::create_client()) {
+        Ok(bot) => bot,
+        Err(err) => {
+            error!("Failed to start discord bot: {}", err);
+            return;
+        }
+    };
+
     if env::var("DISABLE_SMP_COMMANDS")
         .ok()
         .and_then(|var| var.parse::<bool>().ok())
@@ -109,15 +117,16 @@ fn main() {
         }
     }
 
-    runtime.spawn(async {
-        if let Err(err) = discord_bot::run().await {
-            error!("discord bot error: {}", err);
+    let discord_handle = discord_bot.cache_and_http.http.clone();
+    runtime.block_on(async move {
+        if let Err(err) = webserver::run(discord_handle).await {
+            error!("webserver error: {}", err);
         }
     });
 
-    runtime.block_on(async {
-        if let Err(err) = webserver::run().await {
-            error!("webserver error: {}", err);
+    runtime.spawn(async move {
+        if let Err(err) = discord_bot::run(discord_bot).await {
+            error!("discord bot error: {}", err);
         }
     });
 }

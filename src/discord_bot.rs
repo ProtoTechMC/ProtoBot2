@@ -2,12 +2,16 @@ use crate::config;
 use async_trait::async_trait;
 use log::{error, info};
 use serenity::client::{Context, EventHandler};
+use serenity::http::Http;
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
+use std::sync::Arc;
+
+pub(crate) type Handle = Arc<Http>;
 
 struct Handler;
 
@@ -62,11 +66,14 @@ impl EventHandler for Handler {
     }
 }
 
-pub(crate) async fn run() -> Result<(), crate::Error> {
+pub(crate) async fn create_client() -> Result<Client, crate::Error> {
     let intents = GatewayIntents::empty();
-    let mut client = Client::builder(&config::get().discord_token, intents)
+    Ok(Client::builder(&config::get().discord_token, intents)
         .event_handler(Handler)
-        .await?;
+        .await?)
+}
+
+pub(crate) async fn run(mut client: Client) -> Result<(), crate::Error> {
     client.start().await?;
     Ok(())
 }

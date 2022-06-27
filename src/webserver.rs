@@ -1,5 +1,5 @@
 use crate::application::handle_application;
-use crate::config;
+use crate::{config, discord_bot};
 use futures::{ready, Future};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
@@ -14,7 +14,10 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-async fn post_application(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
+async fn post_application(
+    request: Request<Body>,
+    discord_handle: &discord_bot::Handle,
+) -> Result<Response<Body>, crate::Error> {
     let auth = request
         .headers()
         .get("Authorization")
@@ -26,27 +29,34 @@ async fn post_application(request: Request<Body>) -> Result<Response<Body>, crat
             .body("Invalid token".into())?);
     }
 
-    handle_application(std::str::from_utf8(
-        &*body::to_bytes(request.into_body()).await?,
-    )?)
+    handle_application(
+        std::str::from_utf8(&*body::to_bytes(request.into_body()).await?)?,
+        discord_handle,
+    )
     .await?;
 
     Ok(Response::new("Application received".into()))
 }
 
-async fn application(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
+async fn application(
+    request: Request<Body>,
+    discord_handle: &discord_bot::Handle,
+) -> Result<Response<Body>, crate::Error> {
     match request.method() {
-        &Method::POST => post_application(request).await,
+        &Method::POST => post_application(request, discord_handle).await,
         _ => not_found(),
     }
 }
 
-async fn on_http_request(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
+async fn on_http_request(
+    request: Request<Body>,
+    discord_handle: &discord_bot::Handle,
+) -> Result<Response<Body>, crate::Error> {
     let path = request.uri().path();
     info!("{} {}", request.method(), path);
 
     match path {
-        "/application" => application(request).await,
+        "/application" => application(request, discord_handle).await,
         _ => not_found(),
     }
 }
@@ -58,25 +68,31 @@ fn not_found() -> Result<Response<Body>, crate::Error> {
 }
 
 macro_rules! run_service {
-    () => {
-        async {
-            Ok::<_, crate::Error>(service_fn(|req| async {
-                let result = on_http_request(req).await;
-                if let Err(err) = &result {
-                    warn!("Failed to process request: {}", err);
-                }
-                result
-            }))
+    ($discord_handle:expr) => {
+        {
+            let discord_handle = $discord_handle.clone();
+            async move {
+                Ok::<_, crate::Error>(service_fn(move |req| {
+                    let discord_handle = discord_handle.clone();
+                    async move {
+                        let result = on_http_request(req, &discord_handle).await;
+                        if let Err(err) = &result {
+                            warn!("Failed to process request: {}", err);
+                        }
+                        result
+                    }
+                }))
+            }
         }
     };
 }
 
-pub(crate) async fn run() -> Result<(), crate::Error> {
+pub(crate) async fn run(discord_handle: discord_bot::Handle) -> Result<(), crate::Error> {
     let addr: SocketAddr = config::get().listen_ip.parse().unwrap();
 
     if !config::get().use_https {
         let server = Server::bind(&addr)
-            .serve(make_service_fn(|_conn| run_service!()))
+            .serve(make_service_fn(move |_conn| run_service!(discord_handle)))
             .with_graceful_shutdown(crate::is_shutdown());
         info!("Listening on http://{}", addr);
         server.await?;
@@ -104,7 +120,7 @@ pub(crate) async fn run() -> Result<(), crate::Error> {
         };
 
         let server = Server::builder(TlsAcceptor::new(tls_cfg, AddrIncoming::bind(&addr)?))
-            .serve(make_service_fn(|_conn| run_service!()))
+            .serve(make_service_fn(move |_conn| run_service!(discord_handle)))
             .with_graceful_shutdown(crate::is_shutdown());
         info!("Listening on https://{}", addr);
         server.await?;

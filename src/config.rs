@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use serenity::model::id::GuildId;
+use serenity::model::id::{ChannelId, GuildId};
 use std::fs::File;
 
 lazy_static! {
@@ -18,6 +18,7 @@ pub struct Config {
     pub listen_ip: String,
     #[serde(default)]
     pub use_https: bool,
+    pub application_channel: ChannelId,
     pub application_token: String,
     pub pterodactyl_domain: String,
     pub pterodactyl_server_ids: Vec<String>,

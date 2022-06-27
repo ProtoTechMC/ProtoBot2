@@ -1,13 +1,28 @@
-use log::info;
+use crate::{config, discord_bot};
 use serde::Deserialize;
+use serenity::model::Timestamp;
 
-pub(crate) async fn handle_application(application_json: &str) -> Result<(), crate::Error> {
+pub(crate) async fn handle_application(
+    application_json: &str,
+    discord_handle: &discord_bot::Handle,
+) -> Result<(), crate::Error> {
     let app: Application = serde_json::from_str(application_json)?;
-    for (index, item) in app.items.iter().enumerate() {
-        info!("Question {}", index + 1);
-        info!("{}", item.question);
-        info!("> {:?}", item.answer);
-    }
+    config::get()
+        .application_channel
+        .send_message(discord_handle, move |message| {
+            message.add_embed(move |embed| {
+                embed
+                    .title("Submission")
+                    .description("New submission from application form")
+                    .url(app.url)
+                    .timestamp(Timestamp::now())
+                    .fields(
+                        app.items
+                            .iter()
+                            .map(|item| (item.question, item.answer.to_str(), false)),
+                    )
+            })
+        }).await?;
     Ok(())
 }
 
@@ -29,4 +44,18 @@ enum Answer<'a> {
     String(&'a str),
     StringArray(Vec<&'a str>),
     StringArray2d(Vec<Vec<&'a str>>),
+}
+
+impl<'a> Answer<'a> {
+    fn to_str(&self) -> String {
+        match self {
+            Answer::String(str) => String::from(*str),
+            Answer::StringArray(strs) => strs.join("\r\n"),
+            Answer::StringArray2d(strs) => strs
+                .iter()
+                .map(|strs| strs.join(", "))
+                .collect::<Vec<_>>()
+                .join("\r\n"),
+        }
+    }
 }
