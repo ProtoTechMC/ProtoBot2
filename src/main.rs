@@ -1,3 +1,4 @@
+mod application;
 mod config;
 mod discord_bot;
 mod smp_commands;
@@ -34,6 +35,8 @@ enum Error {
     Json(#[from] serde_json::Error),
     #[error("Discord Error: {0}")]
     Serenity(#[from] serenity::Error),
+    #[error("Utf8 Error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
     #[error("Other Error: {0}")]
     Other(String),
 }

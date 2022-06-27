@@ -1,72 +1,44 @@
+use crate::application::handle_application;
 use crate::config;
-use ed25519_dalek::{PublicKey, Verifier};
-use futures::{ready, Future, TryStreamExt};
+use futures::{ready, Future};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::{body, Body, Method, Request, Response, Server, StatusCode};
 use log::{info, warn};
 use rustls::ServerConfig;
-use std::fs::Permissions;
 use std::io::Error;
 use std::net::SocketAddr;
-use std::os::unix::fs::PermissionsExt;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-async fn update(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
-    if request.method() != Method::PUT {
-        return Ok(Response::builder()
-            .status(StatusCode::METHOD_NOT_ALLOWED)
-            .body("Must use PUT".into())?);
-    }
-
-    let signature: ed25519_dalek::Signature = match request
+async fn post_application(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
+    let auth = request
         .headers()
-        .get("Signature")
-        .and_then(|header| header.to_str().ok())
-        .and_then(|sig| sig.parse().ok())
-    {
-        Some(sig) => sig,
-        None => {
-            return Ok(Response::builder()
-                .status(StatusCode::FORBIDDEN)
-                .body("Missing signature".into())?);
-        }
-    };
-
-    if !crate::update() {
-        return Ok(Response::builder()
-            .status(StatusCode::CONFLICT)
-            .body("Already updating".into())?);
-    }
-
-    let data = request
-        .into_body()
-        .try_fold(Vec::new(), |mut a, b| async move {
-            a.extend_from_slice(&b);
-            Ok(a)
-        })
-        .await?;
-
-    let update_pubkey =
-        PublicKey::from_bytes(&base64::decode(&config::get().update_pubkey).unwrap()).unwrap();
-    if let Err(err) = update_pubkey.verify(&data, &signature) {
+        .get("Authorization")
+        .and_then(|auth| auth.to_str().ok())
+        .and_then(|auth| auth.strip_prefix("Bearer "));
+    if auth != Some(&config::get().application_token) {
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
-            .body(format!("Invalid signature {}", err).into())?);
+            .body("Invalid token".into())?);
     }
 
-    let mut file = tokio::fs::File::create("protobot_updated").await?;
-    file.write_all(&data).await?;
+    handle_application(std::str::from_utf8(
+        &*body::to_bytes(request.into_body()).await?,
+    )?)
+    .await?;
 
-    tokio::fs::set_permissions("protobot_updated", Permissions::from_mode(0o777)).await?;
+    Ok(Response::new("Application received".into()))
+}
 
-    crate::shutdown();
-
-    Ok(Response::new("Updated".into()))
+async fn application(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
+    match request.method() {
+        &Method::POST => post_application(request).await,
+        _ => not_found(),
+    }
 }
 
 async fn on_http_request(request: Request<Body>) -> Result<Response<Body>, crate::Error> {
@@ -74,11 +46,15 @@ async fn on_http_request(request: Request<Body>) -> Result<Response<Body>, crate
     info!("{} {}", request.method(), path);
 
     match path {
-        "/update" => update(request).await,
-        _ => Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body("Not found".into())?),
+        "/application" => application(request).await,
+        _ => not_found(),
     }
+}
+
+fn not_found() -> Result<Response<Body>, crate::Error> {
+    Ok(Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body("Not found".into())?)
 }
 
 macro_rules! run_service {

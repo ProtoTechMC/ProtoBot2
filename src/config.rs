@@ -18,7 +18,7 @@ pub struct Config {
     pub listen_ip: String,
     #[serde(default)]
     pub use_https: bool,
-    pub update_pubkey: String,
+    pub application_token: String,
     pub pterodactyl_domain: String,
     pub pterodactyl_server_ids: Vec<String>,
     pub pterodactyl_api_key: String,
