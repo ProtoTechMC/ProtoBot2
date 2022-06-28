@@ -6,18 +6,18 @@ pub(crate) async fn handle_application(
     application_json: &str,
     discord_handle: &discord_bot::Handle,
 ) -> Result<(), crate::Error> {
-    tokio::fs::write("last_app.json", application_json).await?;
     let app: Application = serde_json::from_str(application_json)?;
     config::get()
         .application_channel
         .send_message(discord_handle, move |message| {
             let embeds = ApplicationEmbeds::create(app);
             for embed in embeds.embeds {
+                let url = embeds.url.clone();
                 message.embed(move |discord_embed| {
                     discord_embed
                         .author(move |author| author.name(embed.author))
                         .title(embed.title)
-                        .url(embeds.url)
+                        .url(url)
                         .description(embed.description)
                         .fields(
                             embed
@@ -45,12 +45,12 @@ const EMBED_FIELD_VALUE_LIMIT: usize = 1024;
 const EMBED_CHARACTER_LIMIT: usize = 6000;
 
 struct ApplicationEmbeds<'a> {
-    url: &'a str,
+    url: String,
     embeds: Vec<ApplicationEmbed<'a>>,
 }
 
 impl<'a> ApplicationEmbeds<'a> {
-    fn create(app: Application<'a>) -> Self {
+    fn create(app: Application) -> Self {
         let (actual_questions, meta_questions): (Vec<_>, Vec<_>) = app
             .items
             .into_iter()
@@ -260,29 +260,29 @@ fn trim(str: Cow<str>, max_len: usize) -> Cow<str> {
 }
 
 #[derive(Deserialize)]
-struct Application<'a> {
-    url: &'a str,
-    items: Vec<Item<'a>>,
+struct Application {
+    url: String,
+    items: Vec<Item>,
 }
 
 #[derive(Deserialize)]
-struct Item<'a> {
-    question: &'a str,
-    answer: Answer<'a>,
+struct Item {
+    question: String,
+    answer: Answer,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-enum Answer<'a> {
-    String(&'a str),
-    StringArray(Vec<&'a str>),
-    StringArray2d(Vec<Vec<&'a str>>),
+enum Answer {
+    String(String),
+    StringArray(Vec<String>),
+    StringArray2d(Vec<Vec<String>>),
 }
 
-impl<'a> Answer<'a> {
+impl Answer {
     fn to_str(&self) -> Cow<str> {
         match self {
-            Answer::String(str) => Cow::Borrowed(*str),
+            Answer::String(str) => Cow::Borrowed(&*str),
             Answer::StringArray(strs) => strs.join("\r\n").into(),
             Answer::StringArray2d(strs) => strs
                 .iter()
