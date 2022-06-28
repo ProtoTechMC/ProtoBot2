@@ -158,8 +158,9 @@ impl<'a> ApplicationEmbeds<'a> {
         };
         while let Some(field) = fields.pop() {
             current_embed.fields.push(field);
-            if current_embed.char_count() + url_len > EMBED_CHARACTER_LIMIT
-                || current_embed.fields.len() > EMBED_FIELD_LIMIT
+            if current_embed.fields.len() > 1
+                && (current_embed.char_count() + url_len > EMBED_CHARACTER_LIMIT
+                    || current_embed.fields.len() > EMBED_FIELD_LIMIT)
             {
                 fields.push(current_embed.fields.pop().unwrap());
                 embeds.push(current_embed);
