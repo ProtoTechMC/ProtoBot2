@@ -7,12 +7,13 @@ pub(crate) async fn handle_application(
     discord_handle: &discord_bot::Handle,
 ) -> Result<(), crate::Error> {
     let app: Application = serde_json::from_str(application_json)?;
-    config::get()
-        .application_channel
-        .send_message(discord_handle, move |message| {
-            let embeds = ApplicationEmbeds::create(app);
-            for embed in embeds.embeds {
-                let url = embeds.url.clone();
+    let embeds = ApplicationEmbeds::create(app);
+
+    for embed in embeds.embeds {
+        let url = embeds.url.clone();
+        config::get()
+            .application_channel
+            .send_message(discord_handle, move |message| {
                 message.embed(move |discord_embed| {
                     discord_embed
                         .author(move |author| author.name(embed.author))
@@ -29,10 +30,11 @@ pub(crate) async fn handle_application(
                     }
                     discord_embed
                 });
-            }
-            message
-        })
-        .await?;
+                message
+            })
+            .await?;
+    }
+
     Ok(())
 }
 
