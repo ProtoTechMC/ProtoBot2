@@ -17,14 +17,17 @@ pub(crate) async fn handle_application(
                     discord_embed
                         .author(move |author| author.name(embed.author))
                         .title(embed.title)
-                        .url(url)
                         .description(embed.description)
                         .fields(
                             embed
                                 .fields
                                 .into_iter()
                                 .map(|field| (field.title, field.value, false)),
-                        )
+                        );
+                    if url.len() <= EMBED_URL_LIMIT {
+                        discord_embed.url(url)
+                    }
+                    discord_embed
                 });
             }
             message
@@ -37,6 +40,7 @@ const DISCORD_QUESTION: usize = 0;
 const IGN_QUESTION: usize = 1;
 
 const EMBED_COUNT_LIMIT: usize = 10;
+const EMBED_URL_LIMIT: usize = 2048;
 const EMBED_TITLE_LIMIT: usize = 256;
 const EMBED_AUTHOR_LIMIT: usize = 256;
 const EMBED_FIELD_LIMIT: usize = 25;
@@ -147,9 +151,14 @@ impl<'a> ApplicationEmbeds<'a> {
             fields: Vec::new(),
             ..embed
         };
+        let url_len = if self.url.len() > EMBED_URL_LIMIT {
+            0
+        } else {
+            self.url.len()
+        };
         while let Some(field) = fields.pop() {
             current_embed.fields.push(field);
-            if current_embed.char_count() > EMBED_CHARACTER_LIMIT
+            if current_embed.char_count() + url_len > EMBED_CHARACTER_LIMIT
                 || current_embed.fields.len() > EMBED_FIELD_LIMIT
             {
                 fields.push(current_embed.fields.pop().unwrap());
