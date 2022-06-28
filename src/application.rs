@@ -220,6 +220,7 @@ struct ApplicationEmbed<'a> {
 impl<'a> ApplicationEmbed<'a> {
     fn char_count(&self) -> usize {
         self.title.len()
+            + self.author.len()
             + self.description.len()
             + self
                 .fields
