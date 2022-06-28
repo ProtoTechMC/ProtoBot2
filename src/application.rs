@@ -25,7 +25,7 @@ pub(crate) async fn handle_application(
                                 .map(|field| (field.title, field.value, false)),
                         );
                     if url.len() <= EMBED_URL_LIMIT {
-                        discord_embed.url(url)
+                        discord_embed.url(url);
                     }
                     discord_embed
                 });
