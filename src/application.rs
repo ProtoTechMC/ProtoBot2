@@ -6,6 +6,7 @@ pub(crate) async fn handle_application(
     application_json: &str,
     discord_handle: &discord_bot::Handle,
 ) -> Result<(), crate::Error> {
+    tokio::fs::write("last_app.json", application_json).await?;
     let app: Application = serde_json::from_str(application_json)?;
     config::get()
         .application_channel
