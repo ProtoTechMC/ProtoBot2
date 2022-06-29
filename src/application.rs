@@ -1,12 +1,18 @@
 use crate::{config, discord_bot};
+use linkify::{LinkFinder, LinkKind};
+use log::warn;
+use scraper::Html;
 use serde::Deserialize;
+use serde_json::json;
 use std::borrow::{Borrow, Cow};
+use std::collections::HashMap;
 
 pub(crate) async fn handle_application(
     application_json: &str,
     discord_handle: &discord_bot::Handle,
 ) -> Result<(), crate::Error> {
     let app: Application = serde_json::from_str(application_json)?;
+    let attachments = find_attachments(&app).await;
     let embeds = ApplicationEmbeds::create(app);
 
     for embed in embeds.embeds {
@@ -31,6 +37,36 @@ pub(crate) async fn handle_application(
                     discord_embed
                 });
                 message
+            })
+            .await?;
+    }
+
+    for attachment in attachments {
+        config::get()
+            .application_channel
+            .send_message(discord_handle, move |message| {
+                message.embed(move |discord_embed| {
+                    match attachment.typ {
+                        AttachmentType::Image => {
+                            discord_embed.image(attachment.url);
+                        }
+                        AttachmentType::Video => {
+                            discord_embed
+                                .0
+                                .insert("video", json!({"url": attachment.url}));
+                        }
+                    }
+                    if let Some(link) = attachment.link {
+                        discord_embed.url(link);
+                    }
+                    if let Some(title) = attachment.title {
+                        discord_embed.title(title);
+                    }
+                    if let Some(description) = attachment.description {
+                        discord_embed.description(description);
+                    }
+                    discord_embed
+                })
             })
             .await?;
     }
@@ -254,6 +290,19 @@ impl<'a> ApplicationField<'a> {
     }
 }
 
+struct Attachment {
+    typ: AttachmentType,
+    url: String,
+    link: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+}
+
+enum AttachmentType {
+    Image,
+    Video,
+}
+
 fn trim(str: Cow<str>, max_len: usize) -> Cow<str> {
     if str.len() > max_len {
         format!(
@@ -269,6 +318,139 @@ fn trim(str: Cow<str>, max_len: usize) -> Cow<str> {
     } else {
         str
     }
+}
+
+fn find_urls(str: &str) -> impl Iterator<Item = &str> {
+    let mut finder = LinkFinder::new();
+    finder.kinds(&[LinkKind::Url]);
+    finder
+        .links(str)
+        .map(|link| link.as_str())
+        .filter(|link| link.starts_with("https://"))
+}
+
+async fn find_attachments(app: &Application) -> Vec<Attachment> {
+    let mut result = Vec::new();
+
+    let client = reqwest::Client::new();
+
+    let urls = app
+        .items
+        .iter()
+        .flat_map(|item| match &item.answer {
+            Answer::String(str) => Some(str),
+            _ => None,
+        })
+        .flat_map(|answer| find_urls(answer))
+        .collect::<Vec<_>>();
+    for url in urls {
+        let response = match client.get(url).send().await {
+            Ok(res) => res,
+            Err(err) => {
+                warn!("Failed to fetch from specified url {}: {}", url, err);
+                continue;
+            }
+        };
+        if !response.status().is_success() {
+            warn!(
+                "Failed to fetch from specified url {}: returned status code {}",
+                url,
+                response.status()
+            );
+            continue;
+        }
+        let content_type = match response
+            .headers()
+            .get("Content-Type")
+            .and_then(|header| header.to_str().ok())
+        {
+            Some(header) => header,
+            None => {
+                warn!("Specified url {} missing content type header", url);
+                continue;
+            }
+        };
+
+        if content_type.starts_with("image/") {
+            result.push(Attachment {
+                typ: AttachmentType::Image,
+                url: url.to_owned(),
+                link: None,
+                title: None,
+                description: None,
+            });
+        } else if content_type.starts_with("video/") {
+            result.push(Attachment {
+                typ: AttachmentType::Video,
+                url: url.to_owned(),
+                link: None,
+                title: None,
+                description: None,
+            });
+        } else if content_type.starts_with("text/html") {
+            let text = match response.text().await {
+                Ok(text) => text,
+                Err(err) => {
+                    warn!("Failed to download from url {}: {}", url, err);
+                    continue;
+                }
+            };
+            let document = Html::parse_document(&text);
+            let tags: HashMap<_, _> = document
+                .root_element()
+                .children()
+                .find(|child| {
+                    child
+                        .value()
+                        .as_element()
+                        .map(|element| element.name() == "head")
+                        == Some(true)
+                })
+                .map(|head| {
+                    head.children()
+                        .flat_map(|child| child.value().as_element())
+                        .filter(|&element| element.name() == "meta")
+                        .flat_map(|element| element.attr("property").zip(element.attr("content")))
+                })
+                .into_iter()
+                .flatten()
+                .collect();
+
+            if tags.get("og:site_name") == Some(&"YouTube")
+                && tags.get("og:type") == Some(&"video.other")
+            {
+                result.push(Attachment {
+                    typ: AttachmentType::Video,
+                    url: tags.get("og:video:url").copied().unwrap_or(url).to_owned(),
+                    link: tags.get("og:url").copied().map(|str| str.to_owned()),
+                    title: tags.get("og:title").copied().map(|str| str.to_owned()),
+                    description: tags
+                        .get("og:description")
+                        .copied()
+                        .map(|str| str.to_owned()),
+                })
+            } else if tags.contains_key("og:image")
+                || (tags.contains_key("og:title") && tags.contains_key("og:url"))
+            {
+                result.push(Attachment {
+                    typ: AttachmentType::Image,
+                    url: tags
+                        .get("og:image")
+                        .copied()
+                        .unwrap_or_else(|| tags["og:url"])
+                        .to_owned(),
+                    link: tags.get("og:url").copied().map(|str| str.to_owned()),
+                    title: tags.get("og:title").copied().map(|str| str.to_owned()),
+                    description: tags
+                        .get("og:description")
+                        .copied()
+                        .map(|str| str.to_owned()),
+                })
+            }
+        }
+    }
+
+    result
 }
 
 #[derive(Deserialize)]
