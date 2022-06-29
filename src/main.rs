@@ -75,6 +75,8 @@ fn main() {
     }
     let _logger = Logger::try_with_str("info")
         .unwrap()
+        .use_utc()
+        .format(flexi_logger::opt_format)
         .filter(Box::new(SerenityFilter))
         .log_to_file(FileSpec::default().directory("logs"))
         .write_mode(WriteMode::BufferAndFlush)
