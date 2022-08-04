@@ -1,3 +1,4 @@
+use crate::discord_bot::brainfuck;
 use crate::discord_bot::guild_storage::GuildStorage;
 use log::info;
 use serenity::client::Context;
@@ -20,10 +21,24 @@ pub(crate) async fn run(
         None => (command, ""),
     };
 
-    match command {
-        "prefix" => prefix(args, guild_id, ctx, message).await,
-        _ => Ok(()),
+    macro_rules! match_command {
+        ($command:expr, $args:expr, $guild_id:expr, $ctx:expr, $message:expr, {
+            $($name:literal => ($func:path, $description:literal)),* $(,)?
+        }) => {
+            match $command {
+                $(
+                $name => $func($args, $guild_id, $ctx, $message).await,
+                )*
+                "help" => help($args, $guild_id, $ctx, $message, &mut [$(($name, $description)),*, ("help", "Shows this help message")]).await,
+                _ => Ok(())
+            }
+        }
     }
+
+    match_command!(command, args, guild_id, ctx, message, {
+        "prefix" => (prefix, "Change the command prefix"),
+        "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
+    })
 }
 
 async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
@@ -62,6 +77,36 @@ async fn prefix(
     storage.save().await;
     message
         .reply(ctx, format!("Command prefix changed to \"{}\"", args))
+        .await?;
+
+    Ok(())
+}
+
+async fn help(
+    _args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+    commands: &mut [(&str, &str)],
+) -> Result<(), crate::Error> {
+    commands.sort_by_key(|&(name, _)| name);
+    message
+        .channel_id
+        .send_message(ctx, |reply| {
+            reply.reference_message(message).embed(|embed| {
+                embed.title("ProtoBot command help").field(
+                    "Built-in commands:",
+                    commands
+                        .iter()
+                        .map(|&(command, description)| {
+                            format!("• **{}**: {}", command, description)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    false,
+                )
+            })
+        })
         .await?;
 
     Ok(())

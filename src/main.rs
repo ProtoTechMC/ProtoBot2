@@ -30,6 +30,8 @@ enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error("Websocket Error: {0}")]
     Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+    #[error("Join Error: {0}")]
+    Join(#[from] tokio::task::JoinError),
     #[error("Json Error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("Discord Error: {0}")]

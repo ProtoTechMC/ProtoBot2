@@ -1,3 +1,4 @@
+mod brainfuck;
 mod commands;
 mod guild_storage;
 
@@ -54,6 +55,9 @@ async fn process_command(
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, new_message: Message) {
+        if new_message.author.bot {
+            return;
+        }
         let guild_id = match new_message.guild_id {
             Some(guild_id) => guild_id,
             None => return,
