@@ -40,6 +40,11 @@ enum Error {
     Other(String),
 }
 
+#[derive(Clone)]
+pub struct ProtobotData {
+    pub discord_handle: discord_bot::Handle,
+}
+
 lazy_static! {
     static ref SHUTDOWN: Notify = Notify::new();
 }
@@ -119,7 +124,9 @@ fn main() {
         }
     }
 
-    let discord_handle = discord_bot.cache_and_http.http.clone();
+    let protobot_data = ProtobotData {
+        discord_handle: discord_bot.cache_and_http.http.clone(),
+    };
 
     runtime.spawn(async move {
         if let Err(err) = discord_bot::run(discord_bot).await {
@@ -128,7 +135,7 @@ fn main() {
     });
 
     runtime.block_on(async move {
-        if let Err(err) = webserver::run(discord_handle).await {
+        if let Err(err) = webserver::run(protobot_data).await {
             error!("webserver error: {}", err);
         }
     });

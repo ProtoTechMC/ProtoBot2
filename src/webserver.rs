@@ -1,5 +1,5 @@
 use crate::application::handle_application;
-use crate::{config, discord_bot};
+use crate::{config, ProtobotData};
 use futures::{ready, Future};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
@@ -16,7 +16,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 async fn post_application(
     request: Request<Body>,
-    discord_handle: &discord_bot::Handle,
+    data: &ProtobotData,
 ) -> Result<Response<Body>, crate::Error> {
     let auth = request
         .headers()
@@ -31,7 +31,7 @@ async fn post_application(
 
     handle_application(
         std::str::from_utf8(&*body::to_bytes(request.into_body()).await?)?,
-        discord_handle,
+        data,
     )
     .await?;
 
@@ -40,23 +40,23 @@ async fn post_application(
 
 async fn application(
     request: Request<Body>,
-    discord_handle: &discord_bot::Handle,
+    data: &ProtobotData,
 ) -> Result<Response<Body>, crate::Error> {
     match request.method() {
-        &Method::POST => post_application(request, discord_handle).await,
+        &Method::POST => post_application(request, data).await,
         _ => not_found(),
     }
 }
 
 async fn on_http_request(
     request: Request<Body>,
-    discord_handle: &discord_bot::Handle,
+    data: &ProtobotData,
 ) -> Result<Response<Body>, crate::Error> {
     let path = request.uri().path();
     info!("{} {}", request.method(), path);
 
     match path {
-        "/application" => application(request, discord_handle).await,
+        "/application" => application(request, data).await,
         _ => not_found(),
     }
 }
@@ -68,13 +68,13 @@ fn not_found() -> Result<Response<Body>, crate::Error> {
 }
 
 macro_rules! run_service {
-    ($discord_handle:expr) => {{
-        let discord_handle = $discord_handle.clone();
+    ($data:expr) => {{
+        let data = $data.clone();
         async move {
             Ok::<_, crate::Error>(service_fn(move |req| {
-                let discord_handle = discord_handle.clone();
+                let data = data.clone();
                 async move {
-                    let result = on_http_request(req, &discord_handle).await;
+                    let result = on_http_request(req, &data).await;
                     if let Err(err) = &result {
                         warn!("Failed to process request: {}", err);
                     }
@@ -85,12 +85,12 @@ macro_rules! run_service {
     }};
 }
 
-pub(crate) async fn run(discord_handle: discord_bot::Handle) -> Result<(), crate::Error> {
+pub(crate) async fn run(data: ProtobotData) -> Result<(), crate::Error> {
     let addr: SocketAddr = config::get().listen_ip.parse().unwrap();
 
     if !config::get().use_https {
         let server = Server::bind(&addr)
-            .serve(make_service_fn(move |_conn| run_service!(discord_handle)))
+            .serve(make_service_fn(move |_conn| run_service!(data)))
             .with_graceful_shutdown(crate::is_shutdown());
         info!("Listening on http://{}", addr);
         server.await?;
@@ -118,7 +118,7 @@ pub(crate) async fn run(discord_handle: discord_bot::Handle) -> Result<(), crate
         };
 
         let server = Server::builder(TlsAcceptor::new(tls_cfg, AddrIncoming::bind(&addr)?))
-            .serve(make_service_fn(move |_conn| run_service!(discord_handle)))
+            .serve(make_service_fn(move |_conn| run_service!(data)))
             .with_graceful_shutdown(crate::is_shutdown());
         info!("Listening on https://{}", addr);
         server.await?;

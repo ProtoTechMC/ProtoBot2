@@ -1,4 +1,4 @@
-use crate::{config, discord_bot};
+use crate::{config, ProtobotData};
 use linkify::{LinkFinder, LinkKind};
 use log::warn;
 use scraper::Html;
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 pub(crate) async fn handle_application(
     application_json: &str,
-    discord_handle: &discord_bot::Handle,
+    data: &ProtobotData,
 ) -> Result<(), crate::Error> {
     let app: Application = serde_json::from_str(application_json)?;
     let attachments = find_attachments(&app).await;
@@ -19,7 +19,7 @@ pub(crate) async fn handle_application(
         let url = embeds.url.clone();
         config::get()
             .application_channel
-            .send_message(discord_handle, move |message| {
+            .send_message(&data.discord_handle, move |message| {
                 message.embed(move |discord_embed| {
                     discord_embed
                         .author(move |author| author.name(embed.author))
@@ -44,7 +44,7 @@ pub(crate) async fn handle_application(
     for attachment in attachments {
         config::get()
             .application_channel
-            .send_message(discord_handle, move |message| {
+            .send_message(&data.discord_handle, move |message| {
                 message.embed(move |discord_embed| {
                     match attachment.typ {
                         AttachmentType::Image => {
