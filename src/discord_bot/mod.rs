@@ -1,19 +1,20 @@
+mod commands;
 mod guild_storage;
 
 use crate::config;
+use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
-use log::{error, info};
+use log::{error, info, warn};
 use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
+use serenity::model::channel::Message;
+use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
 use std::sync::Arc;
-use serenity::model::channel::Message;
-use serenity::model::gateway::Ready;
-use crate::discord_bot::guild_storage::GuildStorage;
 
 pub(crate) type Handle = Arc<Http>;
 
@@ -52,7 +53,7 @@ async fn process_command(
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, _ctx: Context, new_message: Message) {
+    async fn message(&self, ctx: Context, new_message: Message) {
         let guild_id = match new_message.guild_id {
             Some(guild_id) => guild_id,
             None => return,
@@ -64,7 +65,9 @@ impl EventHandler for Handler {
                 None => return,
             }
         };
-        info!("Received discord command \"{}\"", command);
+        if let Err(err) = commands::run(command, guild_id, ctx, &new_message).await {
+            warn!("Error executing command: {}", err);
+        }
     }
 
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
@@ -86,7 +89,8 @@ impl EventHandler for Handler {
 }
 
 pub(crate) async fn create_client() -> Result<Client, crate::Error> {
-    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents =
+        GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
     Ok(Client::builder(&config::get().discord_token, intents)
         .event_handler(Handler)
         .await?)
