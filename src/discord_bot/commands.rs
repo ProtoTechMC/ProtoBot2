@@ -1,10 +1,12 @@
 use crate::discord_bot::brainfuck;
 use crate::discord_bot::guild_storage::GuildStorage;
+use chrono::Datelike;
 use log::info;
 use serenity::client::Context;
-use serenity::model::channel::Message;
+use serenity::model::channel::{ChannelType, Message};
 use serenity::model::id::GuildId;
 use serenity::model::Permissions;
+use tokio::time::Instant;
 
 pub(crate) async fn run(
     command: &str,
@@ -38,6 +40,10 @@ pub(crate) async fn run(
     match_command!(command, args, guild_id, ctx, message, {
         "prefix" => (prefix, "Change the command prefix"),
         "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
+        "c2f" => (c2f, "Converts Celsius to Fahrenheit"),
+        "channels" => (channels, "Counts the number of channels in this guild"),
+        "echo" => (echo, "What goes around comes around"),
+        "f2c" => (c2f, "Converts Fahrenheit to Celsius"),
     })
 }
 
@@ -79,6 +85,102 @@ async fn prefix(
         .reply(ctx, format!("Command prefix changed to \"{}\"", args))
         .await?;
 
+    Ok(())
+}
+
+async fn c2f(
+    args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let celsius: f64 = match args.parse() {
+        Ok(float) => float,
+        Err(_) => {
+            message.reply(ctx, "Input a valid number").await?;
+            return Ok(());
+        }
+    };
+    let fahrenheit = celsius * (9.0 / 5.0) + 32.0;
+    message
+        .reply(ctx, format!("{}°C = {:.3}°F", celsius, fahrenheit))
+        .await?;
+    Ok(())
+}
+
+async fn channels(
+    _args: &str,
+    guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let mut text_count = 0;
+    let mut voice_count = 0;
+    for channel in guild_id.channels(&ctx).await?.values() {
+        match channel.kind {
+            ChannelType::Text => text_count += 1,
+            ChannelType::Voice => voice_count += 1,
+            _ => {}
+        }
+    }
+
+    let time = chrono::Utc::now();
+    let year = time.year();
+    let is_leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days_in_year = if is_leap_year { 366 } else { 365 };
+    let day_of_year = time.ordinal0();
+    let days_until_next_year = days_in_year - day_of_year;
+
+    let channel_creation_rate = 1.0 / (rand::random::<f64>() * 5.0 + 7.5);
+    let expected = (text_count + voice_count)
+        + (days_until_next_year as f64 * channel_creation_rate).round() as u32;
+    let guild_name = guild_id.name(&ctx).unwrap_or("<unknown>".to_owned());
+    let witty_message = format!(
+        "There are {} channels on {} so far! ({} text channels and {} voice channels)\nI am expecting {} by the end of the year.",
+        text_count + voice_count,
+        guild_name,
+        text_count,
+        voice_count,
+        expected,
+    );
+    message.reply(ctx, witty_message).await?;
+
+    Ok(())
+}
+
+async fn echo(
+    args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    if args.is_empty() {
+        message.reply(ctx, "Enter something for me to say").await?;
+        return Ok(());
+    }
+
+    message.reply(ctx, args).await?;
+
+    Ok(())
+}
+
+async fn f2c(
+    args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let fahrenheit: f64 = match args.parse() {
+        Ok(float) => float,
+        Err(_) => {
+            message.reply(ctx, "Input a valid number").await?;
+            return Ok(());
+        }
+    };
+    let celsius = (fahrenheit - 32.0) * (5.0 / 9.0);
+    message
+        .reply(ctx, format!("{}°F = {:.3}°C", fahrenheit, celsius))
+        .await?;
     Ok(())
 }
 
