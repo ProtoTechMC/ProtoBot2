@@ -64,7 +64,7 @@ impl EventHandler for Handler {
                 None => return,
             }
         };
-        info!("Received discord command {}", command);
+        info!("Received discord command \"{}\"", command);
     }
 
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
@@ -86,7 +86,7 @@ impl EventHandler for Handler {
 }
 
 pub(crate) async fn create_client() -> Result<Client, crate::Error> {
-    let intents = GatewayIntents::GUILD_MESSAGES;
+    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
     Ok(Client::builder(&config::get().discord_token, intents)
         .event_handler(Handler)
         .await?)
