@@ -1,15 +1,19 @@
+mod guild_storage;
+
 use crate::config;
 use async_trait::async_trait;
 use log::{error, info};
 use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
-use serenity::model::gateway::Ready;
+use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
+use serenity::model::application::interaction::{Interaction, InteractionResponseType};
 use serenity::model::id::GuildId;
-use serenity::model::interactions::application_command::ApplicationCommandInteraction;
-use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
 use std::sync::Arc;
+use serenity::model::channel::Message;
+use serenity::model::gateway::Ready;
+use crate::discord_bot::guild_storage::GuildStorage;
 
 pub(crate) type Handle = Arc<Http>;
 
@@ -48,6 +52,21 @@ async fn process_command(
 
 #[async_trait]
 impl EventHandler for Handler {
+    async fn message(&self, _ctx: Context, new_message: Message) {
+        let guild_id = match new_message.guild_id {
+            Some(guild_id) => guild_id,
+            None => return,
+        };
+        let command = {
+            let storage = GuildStorage::get(guild_id).await;
+            match new_message.content.strip_prefix(&storage.command_prefix) {
+                Some(content) => content,
+                None => return,
+            }
+        };
+        info!("Received discord command {}", command);
+    }
+
     async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
         if let Err(err) = create_commands(&ctx, config::get().guild_id).await {
             error!("Failed to register commands: {}", err);
@@ -67,7 +86,7 @@ impl EventHandler for Handler {
 }
 
 pub(crate) async fn create_client() -> Result<Client, crate::Error> {
-    let intents = GatewayIntents::empty();
+    let intents = GatewayIntents::GUILD_MESSAGES;
     Ok(Client::builder(&config::get().discord_token, intents)
         .event_handler(Handler)
         .await?)
