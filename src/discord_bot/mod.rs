@@ -1,4 +1,5 @@
 mod brainfuck;
+mod chess;
 mod commands;
 mod guild_storage;
 

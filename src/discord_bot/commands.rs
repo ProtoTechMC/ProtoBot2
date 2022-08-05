@@ -1,12 +1,11 @@
-use crate::discord_bot::brainfuck;
 use crate::discord_bot::guild_storage::GuildStorage;
+use crate::discord_bot::{brainfuck, chess};
 use chrono::Datelike;
 use log::info;
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
 use serenity::model::id::GuildId;
 use serenity::model::Permissions;
-use tokio::time::Instant;
 
 pub(crate) async fn run(
     command: &str,
@@ -42,8 +41,9 @@ pub(crate) async fn run(
         "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
         "c2f" => (c2f, "Converts Celsius to Fahrenheit"),
         "channels" => (channels, "Counts the number of channels in this guild"),
+        //"chess" => (chess::run, "A chess game"),
         "echo" => (echo, "What goes around comes around"),
-        "f2c" => (c2f, "Converts Fahrenheit to Celsius"),
+        "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
     })
 }
 
@@ -134,7 +134,7 @@ async fn channels(
     let channel_creation_rate = 1.0 / (rand::random::<f64>() * 5.0 + 7.5);
     let expected = (text_count + voice_count)
         + (days_until_next_year as f64 * channel_creation_rate).round() as u32;
-    let guild_name = guild_id.name(&ctx).unwrap_or("<unknown>".to_owned());
+    let guild_name = guild_id.name(&ctx).unwrap_or_else(|| "<unknown>".to_owned());
     let witty_message = format!(
         "There are {} channels on {} so far! ({} text channels and {} voice channels)\nI am expecting {} by the end of the year.",
         text_count + voice_count,

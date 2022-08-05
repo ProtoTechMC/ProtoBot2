@@ -1,3 +1,4 @@
+use crate::discord_bot::chess::ChessState;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
@@ -16,12 +17,15 @@ lazy_static! {
 pub struct GuildStorage {
     #[serde(default = "default_command_prefix")]
     pub command_prefix: String,
+    #[serde(default)]
+    pub chess_state: ChessState,
 }
 
 impl Default for GuildStorage {
     fn default() -> Self {
         GuildStorage {
             command_prefix: default_command_prefix(),
+            chess_state: ChessState::default(),
         }
     }
 }
