@@ -1,4 +1,5 @@
 use crate::discord_bot::guild_storage::GuildStorage;
+use log::warn;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, one_of};
@@ -11,7 +12,6 @@ use serenity::model::channel::Message;
 use serenity::model::id::{GuildId, UserId};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
-
 
 // ===== USER INTERACTION ===== //
 
@@ -561,12 +561,11 @@ pub(crate) async fn run(
     Ok(())
 }
 
-
 // ===== PIECE MOVEMENT ===== //
 
 fn move_pawn(src: Square, dst: Square, black: bool, game: &mut ChessGame, simulate: bool) -> bool {
     let board = &mut game.board;
-    let dir = if black { u8::MAX } else { 1 };
+    let dir = if black { -1 } else { 1 };
     let add = |pos: Square, dx: u8, dy: u8| {
         if black {
             Square::new(pos.x().wrapping_add(dx), pos.y().wrapping_sub(dy))
@@ -575,11 +574,11 @@ fn move_pawn(src: Square, dst: Square, black: bool, game: &mut ChessGame, simula
         }
     };
 
-    if dst.y() != src.y().wrapping_add(dir) {
+    if dst.y() as i8 != src.y() as i8 + dir {
         if dst.x() != src.x() {
             return false;
         }
-        if dst.y() != src.y().wrapping_add(dir * 2) {
+        if dst.y() as i8 != src.y() as i8 + dir * 2 {
             return false;
         }
         if src.y() != (if black { 6 } else { 1 }) {
@@ -878,7 +877,6 @@ fn move_king(src: Square, dst: Square, black: bool, game: &mut ChessGame, simula
     true
 }
 
-
 // ===== GAME LOGIC ===== //
 
 fn is_piece_attacked(game: &mut ChessGame, pos: Square) -> bool {
@@ -955,7 +953,6 @@ fn detect_win_state(game: &mut ChessGame) -> WinState {
     }
 }
 
-
 // ===== STRUCTS ===== //
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -980,11 +977,11 @@ impl Square {
     }
 
     fn x(&self) -> u8 {
-        self.0 & 3
+        self.0 & 7
     }
 
     fn y(&self) -> u8 {
-        (self.0 >> 4) & 3
+        (self.0 >> 4) & 7
     }
 
     fn get(&self, board: &Board) -> Option<Piece> {
@@ -1119,7 +1116,6 @@ impl Default for ChessOptions {
     }
 }
 
-
 // ===== MOVE PARSING ===== //
 
 struct ResolvedMove {
@@ -1217,7 +1213,7 @@ fn parse_move_with_context(mov: &str, game: &mut ChessGame) -> Result<ResolvedMo
     })
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum MovePos {
     WithPiece {
         typ: PieceType,
@@ -1233,22 +1229,28 @@ enum MovePos {
     QueensideCastle,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct Move {
     pos: MovePos,
     promote_piece: Option<PieceType>,
 }
 
 fn parse_move(mov: &str) -> Result<Move, ()> {
-    terminated(alt((parse_standard_move, parse_simple_move)), eof)(mov)
+    alt((parse_standard_move, parse_simple_move))(mov)
         .finish()
         .map(|(_, mov)| mov)
-        .map_err(|_| ())
+        .map_err(|err| {
+            warn!("{:?}", err);
+        })
 }
 
 fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
+    fn parse_dst(mov: &str) -> IResult<&str, (u8, u8)> {
+        preceded(opt(one_of("xX")), pair(parse_file, parse_rank))(mov)
+    }
+
     map(
-        pair(
+        tuple((
             alt((
                 value(MovePos::QueensideCastle, tag("0-0-0")),
                 value(MovePos::KingsideCastle, tag("0-0")),
@@ -1276,15 +1278,16 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
                 map(
                     tuple((
                         one_of("pPrRnNbBqQkK"),
-                        opt(alt((
-                            map(parse_file, |file| (false, file)),
-                            map(parse_rank, |rank| (true, rank)),
-                        ))),
-                        opt(one_of("xX")),
-                        parse_file,
-                        parse_rank,
+                        opt(preceded(
+                            not(parse_dst),
+                            alt((
+                                map(parse_file, |file| (false, file)),
+                                map(parse_rank, |rank| (true, rank)),
+                            )),
+                        )),
+                        parse_dst,
                     )),
-                    |(piece, from_xy, _, x, y)| {
+                    |(piece, from_xy, (x, y))| {
                         let piece_type = match piece {
                             'p' | 'P' => PieceType::Pawn,
                             'r' | 'R' => PieceType::Rook,
@@ -1309,8 +1312,9 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
                 ),
             )),
             parse_suffix,
-        ),
-        |(pos, promote_piece)| Move { pos, promote_piece },
+            eof,
+        )),
+        |(pos, promote_piece, _)| Move { pos, promote_piece },
     )(mov)
 }
 
@@ -1319,12 +1323,13 @@ fn parse_simple_move(mov: &str) -> IResult<&str, Move> {
         tuple((
             parse_file,
             parse_rank,
-            opt(one_of("-xX")),
+            opt(one_of(" -xX")),
             parse_file,
             parse_rank,
             parse_suffix,
+            eof,
         )),
-        |(from_x, from_y, _, to_x, to_y, promote_piece)| Move {
+        |(from_x, from_y, _, to_x, to_y, promote_piece, _)| Move {
             pos: MovePos::FromTo {
                 src: Square::new(from_x, from_y),
                 dst: Square::new(to_x, to_y),
