@@ -3,6 +3,7 @@ mod chess;
 mod commands;
 mod guild_storage;
 mod mood;
+mod storage;
 
 use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;

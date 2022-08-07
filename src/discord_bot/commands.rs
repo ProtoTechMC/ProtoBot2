@@ -1,5 +1,5 @@
 use crate::discord_bot::guild_storage::GuildStorage;
-use crate::discord_bot::{brainfuck, chess, mood};
+use crate::discord_bot::{brainfuck, chess, mood, storage};
 use chrono::Datelike;
 use log::info;
 use serenity::client::Context;
@@ -47,10 +47,11 @@ pub(crate) async fn run(
         "google" => (google, "Google search for lazy people"),
         "len" => (len, "Prints the length of its argument"),
         "mood" => (mood::run, "Prints the mood of its argument"),
+        "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
     })
 }
 
-async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
+pub(super) async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
     if let Some(guild_id) = message.guild_id {
         let member = guild_id.member(ctx, message.author.id).await?;
         let permissions = member.permissions(ctx)?;
