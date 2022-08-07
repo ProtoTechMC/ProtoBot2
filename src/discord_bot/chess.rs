@@ -506,10 +506,10 @@ pub(crate) async fn run(
     ctx: Context,
     message: &Message,
 ) -> Result<(), crate::Error> {
-    let args: Vec<&str> = args.split(' ').collect();
     if args.is_empty() {
         return print_usage(guild_id, ctx, message).await;
     }
+    let args: Vec<&str> = args.split(' ').collect();
 
     match args[0] {
         "start" => {
@@ -1361,7 +1361,7 @@ fn parse_suffix(mov: &str) -> IResult<&str, Option<PieceType>> {
 
 fn parse_file(mov: &str) -> IResult<&str, u8> {
     map(one_of("aAbBcCdDeEfFgGhH"), |char| {
-        if ('a'..'h').contains(&char) {
+        if ('a'..='h').contains(&char) {
             char as u8 - b'a'
         } else {
             char as u8 - b'A'
