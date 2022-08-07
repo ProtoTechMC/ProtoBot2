@@ -32,3 +32,4 @@ tokio = { version = "1.19.2", features = ["fs", "macros", "rt-multi-thread", "ti
 tokio-rustls = "0.23.4"
 tokio-tungstenite = { version = "0.17.1", features = ["native-tls"] }
 tokio-util = { version = "0.7.3", features = ["io"] }
+urlencoding = "2.1.0"

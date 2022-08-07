@@ -44,6 +44,7 @@ pub(crate) async fn run(
         "chess" => (chess::run, "A chess game"),
         "echo" => (echo, "What goes around comes around"),
         "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
+        "google" => (google, "Google search for lazy people"),
     })
 }
 
@@ -183,6 +184,43 @@ async fn f2c(
     message
         .reply(ctx, format!("{}°F = {:.3}°C", fahrenheit, celsius))
         .await?;
+    Ok(())
+}
+
+async fn google(
+    args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    if args.is_empty() {
+        message.reply(ctx, "Please enter a search query").await?;
+        return Ok(());
+    }
+
+    let url_encoded = urlencoding::encode(args).replace("%20", "+");
+
+    message
+        .channel_id
+        .send_message(&ctx, |new_message| {
+            new_message
+                .reference_message(message)
+                .content(format!("<https://google.com/search?q={}>", url_encoded))
+                .embed(|embed| {
+                    embed
+                        .title("Google Search for Lazy People")
+                        .field("Googling this:", args, false)
+                        .footer(|footer| {
+                            footer.text(&message.author.name);
+                            if let Some(avatar) = &message.author.avatar_url() {
+                                footer.icon_url(avatar);
+                            }
+                            footer
+                        })
+                })
+        })
+        .await?;
+
     Ok(())
 }
 
