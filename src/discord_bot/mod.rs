@@ -2,6 +2,7 @@ mod brainfuck;
 mod chess;
 mod commands;
 mod guild_storage;
+mod mood;
 
 use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;

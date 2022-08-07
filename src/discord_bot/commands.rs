@@ -1,5 +1,5 @@
 use crate::discord_bot::guild_storage::GuildStorage;
-use crate::discord_bot::{brainfuck, chess};
+use crate::discord_bot::{brainfuck, chess, mood};
 use chrono::Datelike;
 use log::info;
 use serenity::client::Context;
@@ -45,6 +45,8 @@ pub(crate) async fn run(
         "echo" => (echo, "What goes around comes around"),
         "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
         "google" => (google, "Google search for lazy people"),
+        "len" => (len, "Prints the length of its argument"),
+        "mood" => (mood::run, "Prints the mood of its argument"),
     })
 }
 
@@ -221,6 +223,16 @@ async fn google(
         })
         .await?;
 
+    Ok(())
+}
+
+async fn len(
+    args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    message.reply(ctx, args.len().to_string()).await?;
     Ok(())
 }
 
