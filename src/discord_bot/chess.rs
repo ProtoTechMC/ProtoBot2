@@ -3,7 +3,7 @@ use log::warn;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, one_of};
-use nom::combinator::{eof, map, not, opt, peek, value};
+use nom::combinator::{eof, map, not, opt, value};
 use nom::sequence::{pair, preceded, terminated, tuple};
 use nom::{Finish, IResult};
 use serde::{Deserialize, Serialize};
@@ -25,14 +25,14 @@ async fn print_usage(
         .reply(
             ctx,
             format!(
-                r#"```\n
-                {prefix}chess start <@opponent>\n
-                {prefix}chess [move] <theMove>\n
-                {prefix}chess resign\n
-                {prefix}chess board\n
-                {prefix}chess help\n
-                {prefix}chess option <flip> <value>\n
-                ```"#
+                "```\
+                {prefix}chess start <@opponent>
+                {prefix}chess [move] <theMove>
+                {prefix}chess resign
+                {prefix}chess board
+                {prefix}chess help
+                {prefix}chess option <flip> <value>
+                ```"
             ),
         )
         .await?;
@@ -1262,11 +1262,11 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
                 }),
                 map(
                     tuple((
-                        peek(not(char('B'))),
-                        parse_rank,
-                        one_of("xX"),
-                        parse_rank,
+                        not(char('B')),
                         parse_file,
+                        one_of("xX"),
+                        parse_file,
+                        parse_rank,
                     )),
                     |(_, from_x, _, to_x, to_y)| MovePos::WithPiece {
                         typ: PieceType::Pawn,
