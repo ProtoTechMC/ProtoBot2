@@ -2,10 +2,10 @@ use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use nom::branch::alt;
 use nom::bytes::complete::escaped_transform;
-use nom::character::complete::{anychar, char, none_of, one_of, satisfy, space0, space1};
-use nom::combinator::{eof, map, map_res, not, recognize, value, verify};
+use nom::character::complete::{char, none_of, satisfy, space0};
+use nom::combinator::{map, map_res, not, recognize, value};
 use nom::error::ErrorKind;
-use nom::multi::{many_till, separated_list1};
+use nom::multi::{many1, separated_list1};
 use nom::sequence::{delimited, preceded, tuple};
 use nom::{AsChar, Finish};
 use serenity::client::Context;
@@ -23,13 +23,9 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<str>>), ()> {
                 preceded(
                     not(char('"')),
                     map(
-                        verify(
-                            recognize(many_till(
-                                anychar,
-                                alt((value((), one_of(".=")), value((), space1), value((), eof))),
-                            )),
-                            |name: &str| !name.is_empty(),
-                        ),
+                        recognize(many1(satisfy(|char| {
+                            char != '.' && char != '=' && !char.is_whitespace()
+                        }))),
                         Cow::Borrowed,
                     ),
                 ),
