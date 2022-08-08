@@ -3,7 +3,7 @@ use crate::discord_bot::guild_storage::GuildStorage;
 use nom::branch::alt;
 use nom::bytes::complete::escaped_transform;
 use nom::character::complete::{anychar, char, none_of, one_of, satisfy, space0};
-use nom::combinator::{map, map_res, not, recognize, value, verify};
+use nom::combinator::{eof, map, map_res, not, recognize, value, verify};
 use nom::error::ErrorKind;
 use nom::multi::{many_till, separated_list1};
 use nom::sequence::{delimited, preceded, tuple};
@@ -26,7 +26,7 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<str>>), ()> {
                         verify(
                             recognize(many_till(
                                 anychar,
-                                alt((value((), one_of(".=")), value((), space0))),
+                                alt((value((), one_of(".=")), value((), space0), value((), eof))),
                             )),
                             |name: &str| !name.is_empty(),
                         ),
