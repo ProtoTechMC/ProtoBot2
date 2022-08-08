@@ -1,11 +1,12 @@
 use crate::discord_bot::chess::ChessState;
+use crate::discord_bot::role::RoleData;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use log::warn;
 use serde::{Deserialize, Serialize};
-use serenity::model::id::GuildId;
+use serenity::model::id::{ChannelId, GuildId};
 use std::ops::{Deref, DerefMut};
 
 lazy_static! {
@@ -19,6 +20,10 @@ pub struct GuildStorage {
     pub command_prefix: String,
     #[serde(default)]
     pub chess_state: ChessState,
+    #[serde(default)]
+    pub role_data: RoleData,
+    #[serde(default)]
+    pub log_channel: Option<ChannelId>,
 }
 
 impl Default for GuildStorage {
@@ -26,6 +31,8 @@ impl Default for GuildStorage {
         GuildStorage {
             command_prefix: default_command_prefix(),
             chess_state: ChessState::default(),
+            role_data: RoleData::default(),
+            log_channel: None,
         }
     }
 }

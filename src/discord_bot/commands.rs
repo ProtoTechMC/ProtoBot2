@@ -1,5 +1,5 @@
 use crate::discord_bot::guild_storage::GuildStorage;
-use crate::discord_bot::{brainfuck, chess, mood, storage};
+use crate::discord_bot::{brainfuck, chess, mood, role, storage};
 use chrono::Datelike;
 use log::info;
 use serenity::client::Context;
@@ -47,6 +47,7 @@ pub(crate) async fn run(
         "google" => (google, "Google search for lazy people"),
         "len" => (len, "Prints the length of its argument"),
         "mood" => (mood::run, "Prints the mood of its argument"),
+        "role" => (role::run, "Allows members to manage specified roles"),
         "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
     })
 }

@@ -3,6 +3,7 @@ mod chess;
 mod commands;
 mod guild_storage;
 mod mood;
+mod role;
 mod storage;
 
 use crate::config;
