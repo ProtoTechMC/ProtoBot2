@@ -3,7 +3,7 @@ use crate::discord_bot::guild_storage::GuildStorage;
 use nom::branch::alt;
 use nom::bytes::complete::escaped_transform;
 use nom::character::complete::{anychar, char, none_of, one_of, satisfy, space0};
-use nom::combinator::{map, map_res, not, recognize, value};
+use nom::combinator::{map, map_res, not, recognize, value, verify};
 use nom::error::ErrorKind;
 use nom::multi::{many_till, separated_list1};
 use nom::sequence::{delimited, preceded, tuple};
@@ -23,10 +23,13 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<str>>), ()> {
                 preceded(
                     not(char('"')),
                     map(
-                        recognize(many_till(
-                            anychar,
-                            alt((value((), one_of(".=")), value((), space0))),
-                        )),
+                        verify(
+                            recognize(many_till(
+                                anychar,
+                                alt((value((), one_of(".=")), value((), space0))),
+                            )),
+                            |name| !name.is_empty(),
+                        ),
                         Cow::Borrowed,
                     ),
                 ),
@@ -145,11 +148,15 @@ async fn get_data(
     ctx: Context,
     message: &Message,
 ) -> Result<(), crate::Error> {
-    let path = match parse_path(args) {
-        Ok(("", path)) => path,
-        _ => {
-            message.reply(ctx, "Syntax error").await?;
-            return Ok(());
+    let path = if args.is_empty() {
+        Vec::new()
+    } else {
+        match parse_path(args) {
+            Ok(("", path)) => path,
+            _ => {
+                message.reply(ctx, "Syntax error").await?;
+                return Ok(());
+            }
         }
     };
 
@@ -345,11 +352,15 @@ async fn list_data(
     ctx: Context,
     message: &Message,
 ) -> Result<(), crate::Error> {
-    let path = match parse_path(args) {
-        Ok(("", path)) => path,
-        _ => {
-            message.reply(ctx, "Syntax error").await?;
-            return Ok(());
+    let path = if args.is_empty() {
+        Vec::new()
+    } else {
+        match parse_path(args) {
+            Ok(("", path)) => path,
+            _ => {
+                message.reply(ctx, "Syntax error").await?;
+                return Ok(());
+            }
         }
     };
 
