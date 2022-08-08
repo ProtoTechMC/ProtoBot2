@@ -431,11 +431,11 @@ async fn print_help(
             ctx,
             format!(
                 "```\
-                Usage:
-                {prefix}storage get path.to.data
-                {prefix}storage set path.to.data=newValue
-                {prefix}storage delete path.to.data
-                {prefix}storage list
+                Usage:\
+                {prefix}storage get path.to.data\
+                {prefix}storage set path.to.data=newValue\
+                {prefix}storage delete path.to.data\
+                {prefix}storage list\
                 ```"
             ),
         )

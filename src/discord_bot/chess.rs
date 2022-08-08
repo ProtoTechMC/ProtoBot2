@@ -26,12 +26,12 @@ async fn print_usage(
             ctx,
             format!(
                 "```\
-                {prefix}chess start <@opponent>
-                {prefix}chess [move] <theMove>
-                {prefix}chess resign
-                {prefix}chess board
-                {prefix}chess help
-                {prefix}chess option <flip> <value>
+                {prefix}chess start <@opponent>\
+                {prefix}chess [move] <theMove>\
+                {prefix}chess resign\
+                {prefix}chess board\
+                {prefix}chess help\
+                {prefix}chess option <flip> <value>\
                 ```"
             ),
         )
