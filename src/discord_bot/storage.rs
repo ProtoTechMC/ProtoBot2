@@ -28,7 +28,7 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<str>>), ()> {
                                 anychar,
                                 alt((value((), one_of(".=")), value((), space0))),
                             )),
-                            |name| !name.is_empty(),
+                            |name: &str| !name.is_empty(),
                         ),
                         Cow::Borrowed,
                     ),
