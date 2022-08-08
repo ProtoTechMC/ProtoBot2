@@ -25,13 +25,13 @@ async fn print_usage(
         .reply(
             ctx,
             format!(
-                "```\
-                {prefix}chess start <@opponent>\
-                {prefix}chess [move] <theMove>\
-                {prefix}chess resign\
-                {prefix}chess board\
-                {prefix}chess help\
-                {prefix}chess option <flip> <value>\
+                "```\n\
+                {prefix}chess start <@opponent>\n\
+                {prefix}chess [move] <theMove>\n\
+                {prefix}chess resign\n\
+                {prefix}chess board\n\
+                {prefix}chess help\n\
+                {prefix}chess option <flip> <value>\n\
                 ```"
             ),
         )
