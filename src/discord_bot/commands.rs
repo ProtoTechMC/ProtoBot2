@@ -225,11 +225,14 @@ async fn dog(
     struct DogResponse {
         url: String,
     }
-    let json: DogResponse = reqwest::get("https://random.dog/woof.json")
+    let client = reqwest::Client::new();
+    let json: DogResponse = client
+        .get("https://random.dog/woof.json")
+        .send()
         .await?
         .json()
         .await?;
-    let image = reqwest::get(json.url).await?.bytes().await?;
+    let image = client.get(json.url).send().await?.bytes().await?;
     message
         .channel_id
         .send_message(ctx, |new_message| {
