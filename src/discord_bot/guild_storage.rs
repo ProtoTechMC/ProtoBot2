@@ -6,7 +6,8 @@ use dashmap::DashMap;
 use lazy_static::lazy_static;
 use log::warn;
 use serde::{Deserialize, Serialize};
-use serenity::model::id::{ChannelId, GuildId};
+use serenity::model::id::{ChannelId, GuildId, RoleId};
+use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
 lazy_static! {
@@ -24,6 +25,10 @@ pub struct GuildStorage {
     pub role_data: RoleData,
     #[serde(default)]
     pub log_channel: Option<ChannelId>,
+    #[serde(default)]
+    pub role_toggles: HashMap<String, RoleId>,
+    #[serde(default)]
+    pub tricks: HashMap<String, String>,
 }
 
 impl Default for GuildStorage {
@@ -33,6 +38,8 @@ impl Default for GuildStorage {
             chess_state: ChessState::default(),
             role_data: RoleData::default(),
             log_channel: None,
+            role_toggles: HashMap::new(),
+            tricks: HashMap::new(),
         }
     }
 }

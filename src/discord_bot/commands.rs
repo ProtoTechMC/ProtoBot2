@@ -4,8 +4,48 @@ use chrono::Datelike;
 use log::info;
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
-use serenity::model::id::GuildId;
+use serenity::model::id::{GuildId, RoleId};
 use serenity::model::Permissions;
+
+macro_rules! count {
+    ($desc:literal) => { 1 };
+    ($desc:literal, $($rest:literal),*) => {
+        1 + count!($($rest),*)
+    }
+}
+
+macro_rules! declare_commands {
+    ($($name:literal => ($func:path, $description:literal)),* $(,)?) => {
+        const COMMANDS: [(&str, &str); count!($($description),*)] = [$(($name, $description)),*];
+
+        async fn do_run_command(command: &str, args: &str, guild_id: GuildId, ctx: Context, message: &Message) -> Result<(), crate::Error> {
+            match command {
+                $(
+                $name => $func(args, guild_id, ctx, message).await,
+                )*
+                _ => handle_custom_command(command, guild_id, ctx, message).await
+            }
+        }
+    }
+}
+
+declare_commands! {
+    "prefix" => (prefix, "Change the command prefix"),
+    "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
+    "c2f" => (c2f, "Converts Celsius to Fahrenheit"),
+    "channels" => (channels, "Counts the number of channels in this guild"),
+    "chess" => (chess::run, "A chess game"),
+    "echo" => (echo, "What goes around comes around"),
+    "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
+    "google" => (google, "Google search for lazy people"),
+    "help" => (help, "Shows this help command"),
+    "len" => (len, "Prints the length of its argument"),
+    "mood" => (mood::run, "Prints the mood of its argument"),
+    "role" => (role::run, "Allows members to manage specified roles"),
+    "roletoggle" => (roletoggle, "Adds a role toggle"),
+    "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
+    "trick" => (trick, "Adds a trick"),
+}
 
 pub(crate) async fn run(
     command: &str,
@@ -22,34 +62,30 @@ pub(crate) async fn run(
         None => (command, ""),
     };
 
-    macro_rules! match_command {
-        ($command:expr, $args:expr, $guild_id:expr, $ctx:expr, $message:expr, {
-            $($name:literal => ($func:path, $description:literal)),* $(,)?
-        }) => {
-            match $command {
-                $(
-                $name => $func($args, $guild_id, $ctx, $message).await,
-                )*
-                "help" => help($args, $guild_id, $ctx, $message, &mut [$(($name, $description)),*, ("help", "Shows this help message")]).await,
-                _ => Ok(())
-            }
+    do_run_command(command, args, guild_id, ctx, message).await
+}
+
+async fn handle_custom_command(
+    command: &str,
+    guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let command = command.to_lowercase();
+    let storage = GuildStorage::get(guild_id).await;
+    if let Some(&role_id) = storage.role_toggles.get(&command) {
+        let mut member = guild_id.member(&ctx, message.author.id).await?;
+        if member.roles.contains(&role_id) {
+            member.remove_role(&ctx, role_id).await?;
+        } else {
+            member.add_role(&ctx, role_id).await?;
         }
+        message.reply(ctx, "The role has been toggled").await?;
+    } else if let Some(trick) = storage.tricks.get(&command) {
+        message.reply(ctx, trick).await?;
     }
 
-    match_command!(command, args, guild_id, ctx, message, {
-        "prefix" => (prefix, "Change the command prefix"),
-        "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
-        "c2f" => (c2f, "Converts Celsius to Fahrenheit"),
-        "channels" => (channels, "Counts the number of channels in this guild"),
-        "chess" => (chess::run, "A chess game"),
-        "echo" => (echo, "What goes around comes around"),
-        "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
-        "google" => (google, "Google search for lazy people"),
-        "len" => (len, "Prints the length of its argument"),
-        "mood" => (mood::run, "Prints the mood of its argument"),
-        "role" => (role::run, "Allows members to manage specified roles"),
-        "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
-    })
+    Ok(())
 }
 
 pub(super) async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
@@ -238,29 +274,242 @@ async fn len(
     Ok(())
 }
 
-async fn help(
-    _args: &str,
-    _guild_id: GuildId,
+async fn roletoggle(
+    args: &str,
+    guild_id: GuildId,
     ctx: Context,
     message: &Message,
-    commands: &mut [(&str, &str)],
 ) -> Result<(), crate::Error> {
+    if !check_admin(&ctx, message).await? {
+        return Ok(());
+    }
+
+    let args: Vec<_> = args.split(' ').collect();
+    match args[0] {
+        "add" => {
+            if args.len() != 3 {
+                let storage = GuildStorage::get(guild_id).await;
+                message
+                    .reply(
+                        ctx,
+                        format!(
+                            "`{}roletoggle add <name> <role-id>`",
+                            storage.command_prefix
+                        ),
+                    )
+                    .await?;
+                return Ok(());
+            }
+
+            let mut storage = GuildStorage::get_mut(guild_id).await;
+
+            let name = args[1].to_lowercase();
+            if COMMANDS.iter().any(|&(cmd_name, _)| cmd_name == name)
+                || storage.role_toggles.contains_key(&name)
+                || storage.tricks.contains_key(&name)
+            {
+                storage.discard();
+                message
+                    .reply(ctx, "A command with that name already exists")
+                    .await?;
+                return Ok(());
+            }
+
+            let role = match args[2].parse() {
+                Ok(role) => role,
+                Err(_) => {
+                    storage.discard();
+                    message.reply(ctx, "Invalid role id").await?;
+                    return Ok(());
+                }
+            };
+            let role = RoleId(role);
+            if role.to_role_cached(&ctx).is_none() {
+                storage.discard();
+                message.reply(ctx, "No such role with that id").await?;
+                return Ok(());
+            }
+
+            storage.role_toggles.insert(name, role);
+            storage.save().await;
+            message.reply(ctx, "Successfully added role toggle").await?;
+        }
+        "remove" => {
+            if args.len() != 2 {
+                let storage = GuildStorage::get(guild_id).await;
+                message
+                    .reply(
+                        ctx,
+                        format!("`{}roletoggle remove <name>`", storage.command_prefix),
+                    )
+                    .await?;
+                return Ok(());
+            }
+
+            let mut storage = GuildStorage::get_mut(guild_id).await;
+            let name = args[1].to_lowercase();
+            match storage.role_toggles.remove(&name) {
+                Some(_) => {
+                    storage.save().await;
+                    message
+                        .reply(ctx, "Successfully removed role toggle")
+                        .await?;
+                }
+                None => {
+                    storage.discard();
+                    message.reply(ctx, "No such role toggle").await?;
+                }
+            }
+        }
+        _ => {
+            let storage = GuildStorage::get(guild_id).await;
+            message
+                .reply(
+                    ctx,
+                    format!("`{}roletoggle <add|remove> ...`", storage.command_prefix),
+                )
+                .await?;
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
+async fn trick(
+    args: &str,
+    guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    if !check_admin(&ctx, message).await? {
+        return Ok(());
+    }
+
+    let args: Vec<_> = args.split(' ').collect();
+    match args[0] {
+        "add" => {
+            if args.len() < 3 {
+                let storage = GuildStorage::get(guild_id).await;
+                message
+                    .reply(
+                        ctx,
+                        format!("`{}trick add <name> <message>`", storage.command_prefix),
+                    )
+                    .await?;
+                return Ok(());
+            }
+
+            let mut storage = GuildStorage::get_mut(guild_id).await;
+
+            let name = args[1].to_lowercase();
+            if COMMANDS.iter().any(|&(cmd_name, _)| cmd_name == name)
+                || storage.role_toggles.contains_key(&name)
+                || storage.tricks.contains_key(&name)
+            {
+                storage.discard();
+                message
+                    .reply(ctx, "A command with that name already exists")
+                    .await?;
+                return Ok(());
+            }
+
+            let value = args[2..].to_vec().join(" ");
+
+            storage.tricks.insert(name, value);
+            storage.save().await;
+            message.reply(ctx, "Successfully added trick").await?;
+        }
+        "remove" => {
+            if args.len() != 2 {
+                let storage = GuildStorage::get(guild_id).await;
+                message
+                    .reply(
+                        ctx,
+                        format!("`{}trick remove <name>`", storage.command_prefix),
+                    )
+                    .await?;
+                return Ok(());
+            }
+
+            let mut storage = GuildStorage::get_mut(guild_id).await;
+            let name = args[1].to_lowercase();
+            match storage.tricks.remove(&name) {
+                Some(_) => {
+                    storage.save().await;
+                    message.reply(ctx, "Successfully removed trick").await?;
+                }
+                None => {
+                    storage.discard();
+                    message.reply(ctx, "No such trick").await?;
+                }
+            }
+        }
+        _ => {
+            let storage = GuildStorage::get(guild_id).await;
+            message
+                .reply(
+                    ctx,
+                    format!("`{}trick <add|remove> ...`", storage.command_prefix),
+                )
+                .await?;
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
+async fn help(
+    _args: &str,
+    guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let storage = GuildStorage::get(guild_id).await;
+    let mut commands = COMMANDS.to_vec();
+    let mut role_toggles: Vec<_> = storage.role_toggles.keys().collect();
+    let mut tricks: Vec<_> = storage.tricks.keys().collect();
+
     commands.sort_by_key(|&(name, _)| name);
+    role_toggles.sort();
+    tricks.sort();
+
     message
         .channel_id
         .send_message(ctx, |reply| {
             reply.reference_message(message).embed(|embed| {
-                embed.title("ProtoBot command help").field(
-                    "Built-in commands:",
-                    commands
-                        .iter()
-                        .map(|&(command, description)| {
-                            format!("• **{}**: {}", command, description)
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    false,
-                )
+                embed
+                    .title("ProtoBot command help")
+                    .field(
+                        "Built-in commands:",
+                        commands
+                            .iter()
+                            .map(|&(command, description)| {
+                                format!("• **{}**: {}", command, description)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        false,
+                    )
+                    .field(
+                        "Role toggles:",
+                        role_toggles
+                            .iter()
+                            .map(|key| format!("• **{key}**"))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        false,
+                    )
+                    .field(
+                        "Tricks:",
+                        tricks
+                            .iter()
+                            .map(|key| format!("• **{key}**"))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        false,
+                    )
             })
         })
         .await?;
