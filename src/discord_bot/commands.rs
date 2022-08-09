@@ -2,6 +2,7 @@ use crate::discord_bot::guild_storage::GuildStorage;
 use crate::discord_bot::{brainfuck, chess, mood, role, storage};
 use chrono::Datelike;
 use log::info;
+use serde::Deserialize;
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
 use serenity::model::id::{GuildId, RoleId};
@@ -33,8 +34,10 @@ declare_commands! {
     "prefix" => (prefix, "Change the command prefix"),
     "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
     "c2f" => (c2f, "Converts Celsius to Fahrenheit"),
+    "cat" => (cat, "Cat pics"),
     "channels" => (channels, "Counts the number of channels in this guild"),
     "chess" => (chess::run, "A chess game"),
+    "dog" => (dog, "Dog pics"),
     "echo" => (echo, "What goes around comes around"),
     "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
     "google" => (google, "Google search for lazy people"),
@@ -149,6 +152,27 @@ async fn c2f(
     Ok(())
 }
 
+async fn cat(
+    _args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let image = reqwest::get("https://cataas.com/cat")
+        .await?
+        .bytes()
+        .await?;
+    message
+        .channel_id
+        .send_message(ctx, |new_message| {
+            new_message
+                .reference_message(message)
+                .add_file((image.as_ref(), "cat.png"))
+        })
+        .await?;
+    Ok(())
+}
+
 async fn channels(
     _args: &str,
     guild_id: GuildId,
@@ -188,6 +212,32 @@ async fn channels(
     );
     message.reply(ctx, witty_message).await?;
 
+    Ok(())
+}
+
+async fn dog(
+    _args: &str,
+    _guild_id: GuildId,
+    ctx: Context,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    #[derive(Deserialize)]
+    struct DogResponse {
+        url: String,
+    }
+    let json: DogResponse = reqwest::get("https://random.dog/woof.json")
+        .await?
+        .json()
+        .await?;
+    let image = reqwest::get(json.url).await?.bytes().await?;
+    message
+        .channel_id
+        .send_message(ctx, |new_message| {
+            new_message
+                .reference_message(message)
+                .add_file((image.as_ref(), "dog.png"))
+        })
+        .await?;
     Ok(())
 }
 
