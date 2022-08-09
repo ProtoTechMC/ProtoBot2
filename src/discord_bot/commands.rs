@@ -494,20 +494,28 @@ async fn help(
                     )
                     .field(
                         "Role toggles:",
-                        role_toggles
-                            .iter()
-                            .map(|key| format!("• **{key}**"))
-                            .collect::<Vec<_>>()
-                            .join("\n"),
+                        if role_toggles.is_empty() {
+                            "*None*".to_owned()
+                        } else {
+                            role_toggles
+                                .iter()
+                                .map(|key| format!("• **{key}**"))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        },
                         false,
                     )
                     .field(
                         "Tricks:",
-                        tricks
-                            .iter()
-                            .map(|key| format!("• **{key}**"))
-                            .collect::<Vec<_>>()
-                            .join("\n"),
+                        if tricks.is_empty() {
+                            "*None*".to_owned()
+                        } else {
+                            tricks
+                                .iter()
+                                .map(|key| format!("• **{key}**"))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        },
                         false,
                     )
             })
