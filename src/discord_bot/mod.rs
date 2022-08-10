@@ -16,7 +16,9 @@ use serenity::model::application::interaction::application_command::ApplicationC
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
+use serenity::model::guild::Member;
 use serenity::model::id::GuildId;
+use serenity::model::user::User;
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
 use std::sync::Arc;
@@ -94,11 +96,56 @@ impl EventHandler for Handler {
             }
         }
     }
+
+    async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
+        if let Some(join_log_channel) = GuildStorage::get(new_member.guild_id)
+            .await
+            .join_log_channel
+        {
+            if let Err(err) = join_log_channel
+                .send_message(ctx, |message| {
+                    message.content(format!(
+                        "{} has risen from the dead.",
+                        new_member.display_name()
+                    ))
+                })
+                .await
+            {
+                error!("Failed to send message in join log channel: {}", err);
+            }
+        }
+    }
+
+    async fn guild_member_removal(
+        &self,
+        ctx: Context,
+        guild_id: GuildId,
+        user: User,
+        member_data_if_available: Option<Member>,
+    ) {
+        if let Some(join_log_channel) = GuildStorage::get(guild_id).await.join_log_channel {
+            if let Err(err) = join_log_channel
+                .send_message(ctx, move |message| {
+                    message.content(format!(
+                        "{} has been abducted by alien forces.",
+                        member_data_if_available
+                            .map(|member| member.display_name().into_owned())
+                            .unwrap_or(user.name)
+                    ))
+                })
+                .await
+            {
+                error!("Failed to send message in join log channel: {}", err);
+            }
+        }
+    }
 }
 
 pub(crate) async fn create_client() -> Result<Client, crate::Error> {
-    let intents =
-        GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
     Ok(Client::builder(&config::get().discord_token, intents)
         .event_handler(Handler)
         .await?)

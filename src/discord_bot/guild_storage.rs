@@ -26,6 +26,8 @@ pub struct GuildStorage {
     #[serde(default)]
     pub log_channel: Option<ChannelId>,
     #[serde(default)]
+    pub join_log_channel: Option<ChannelId>,
+    #[serde(default)]
     pub role_toggles: HashMap<String, RoleId>,
     #[serde(default)]
     pub tricks: HashMap<String, String>,
@@ -38,6 +40,7 @@ impl Default for GuildStorage {
             chess_state: ChessState::default(),
             role_data: RoleData::default(),
             log_channel: None,
+            join_log_channel: None,
             role_toggles: HashMap::new(),
             tricks: HashMap::new(),
         }
