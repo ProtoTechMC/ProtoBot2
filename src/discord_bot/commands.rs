@@ -1,5 +1,5 @@
 use crate::discord_bot::guild_storage::GuildStorage;
-use crate::discord_bot::{brainfuck, chess, mood, role, storage};
+use crate::discord_bot::{brainfuck, chess, mood, permanent_latest, role, storage};
 use chrono::Datelike;
 use log::info;
 use serde::Deserialize;
@@ -44,6 +44,7 @@ declare_commands! {
     "help" => (help, "Shows this help command"),
     "len" => (len, "Prints the length of its argument"),
     "mood" => (mood::run, "Prints the mood of its argument"),
+    "permanent_latest" => (permanent_latest::on_configure_command, "Configures messages that are permanently the latest message in a channel"),
     "role" => (role::run, "Allows members to manage specified roles"),
     "roletoggle" => (roletoggle, "Adds a role toggle"),
     "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),

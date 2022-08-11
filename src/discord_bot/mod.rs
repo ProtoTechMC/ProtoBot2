@@ -3,6 +3,7 @@ mod chess;
 mod commands;
 mod guild_storage;
 mod mood;
+mod permanent_latest;
 mod role;
 mod storage;
 
@@ -68,14 +69,35 @@ impl EventHandler for Handler {
             Some(guild_id) => guild_id,
             None => return,
         };
-        let command = {
+
+        enum MessageHandling<'a> {
+            Command(&'a str),
+            PermanentLatest,
+        }
+
+        let message_handling = {
             let storage = GuildStorage::get(guild_id).await;
-            match new_message.content.strip_prefix(&storage.command_prefix) {
-                Some(content) => content,
-                None => return,
+            if storage
+                .permanent_latest
+                .is_permanent_latest_channel(new_message.channel_id)
+            {
+                MessageHandling::PermanentLatest
+            } else {
+                match new_message.content.strip_prefix(&storage.command_prefix) {
+                    Some(content) => MessageHandling::Command(content),
+                    None => return,
+                }
             }
         };
-        if let Err(err) = commands::run(command, guild_id, ctx, &new_message).await {
+
+        if let Err(err) = match message_handling {
+            MessageHandling::Command(command) => {
+                commands::run(command, guild_id, ctx, &new_message).await
+            }
+            MessageHandling::PermanentLatest => {
+                permanent_latest::on_message(guild_id, ctx, &new_message).await
+            }
+        } {
             warn!("Error executing command: {}", err);
         }
     }

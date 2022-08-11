@@ -1,4 +1,5 @@
 use crate::discord_bot::chess::ChessState;
+use crate::discord_bot::permanent_latest::PermanentLatestInfo;
 use crate::discord_bot::role::RoleData;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
@@ -31,6 +32,8 @@ pub struct GuildStorage {
     pub role_toggles: HashMap<String, RoleId>,
     #[serde(default)]
     pub tricks: HashMap<String, String>,
+    #[serde(default)]
+    pub permanent_latest: PermanentLatestInfo,
 }
 
 impl Default for GuildStorage {
@@ -43,6 +46,7 @@ impl Default for GuildStorage {
             join_log_channel: None,
             role_toggles: HashMap::new(),
             tricks: HashMap::new(),
+            permanent_latest: PermanentLatestInfo::default(),
         }
     }
 }
