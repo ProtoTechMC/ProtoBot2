@@ -11,7 +11,6 @@ use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use log::{error, info, warn};
-use serenity::client::bridge::gateway::ShardId;
 use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
@@ -175,27 +174,6 @@ pub(crate) async fn create_client() -> Result<Client, crate::Error> {
 }
 
 pub(crate) async fn run(mut client: Client) -> Result<(), crate::Error> {
-    let shard_manager = client.shard_manager.clone();
-    let client_future = client.start();
-    tokio::pin!(client_future);
-
-    let mut restart_time =
-        tokio::time::Instant::now() + tokio::time::Duration::from_secs(6 * 60 * 60);
-    loop {
-        tokio::select! {
-            _ = crate::is_shutdown() => {
-                shard_manager.lock().await.shutdown_all().await;
-                return Ok(());
-            }
-            _ = tokio::time::sleep_until(restart_time) => {
-                shard_manager.lock().await.restart(ShardId(0)).await;
-                restart_time =
-                    tokio::time::Instant::now() + tokio::time::Duration::from_secs(6 * 60 * 60);
-            }
-            _ = &mut client_future => {
-                info!("Discord client stopped");
-                return Ok(());
-            }
-        }
-    }
+    client.start().await?;
+    Ok(())
 }
