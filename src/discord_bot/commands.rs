@@ -1,11 +1,11 @@
 use crate::discord_bot::guild_storage::GuildStorage;
-use crate::discord_bot::{brainfuck, chess, mood, permanent_latest, role, storage};
+use crate::discord_bot::{brainfuck, chess, mood, permanent_latest, role, roletoggle, storage};
 use chrono::Datelike;
 use log::info;
 use serde::Deserialize;
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
-use serenity::model::id::{GuildId, RoleId};
+use serenity::model::id::GuildId;
 use serenity::model::Permissions;
 
 macro_rules! count {
@@ -17,7 +17,7 @@ macro_rules! count {
 
 macro_rules! declare_commands {
     ($($name:literal => ($func:path, $description:literal)),* $(,)?) => {
-        const COMMANDS: [(&str, &str); count!($($description),*)] = [$(($name, $description)),*];
+        pub(super) const COMMANDS: [(&str, &str); count!($($description),*)] = [$(($name, $description)),*];
 
         async fn do_run_command(command: &str, args: &str, guild_id: GuildId, ctx: Context, message: &Message) -> Result<(), crate::Error> {
             match command {
@@ -46,7 +46,7 @@ declare_commands! {
     "mood" => (mood::run, "Prints the mood of its argument"),
     "permanent_latest" => (permanent_latest::on_configure_command, "Configures messages that are permanently the latest message in a channel"),
     "role" => (role::run, "Allows members to manage specified roles"),
-    "roletoggle" => (roletoggle, "Adds a role toggle"),
+    "roletoggle" => (roletoggle::run, "Adds a role toggle"),
     "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
     "trick" => (trick, "Adds a trick"),
 }
@@ -77,12 +77,22 @@ async fn handle_custom_command(
 ) -> Result<(), crate::Error> {
     let command = command.to_lowercase();
     let storage = GuildStorage::get(guild_id).await;
-    if let Some(&role_id) = storage.role_toggles.get(&command) {
+    if let Some(toggle_info) = storage.role_toggles.get(&command) {
         let mut member = guild_id.member(&ctx, message.author.id).await?;
-        if member.roles.contains(&role_id) {
-            member.remove_role(&ctx, role_id).await?;
+
+        if let Some(permission_role) = toggle_info.permission_role {
+            if !member.roles.contains(&permission_role) {
+                message
+                    .reply(ctx, "You do not have permission to toggle this role")
+                    .await?;
+                return Ok(());
+            }
+        }
+
+        if member.roles.contains(&toggle_info.role) {
+            member.remove_role(&ctx, toggle_info.role).await?;
         } else {
-            member.add_role(&ctx, role_id).await?;
+            member.add_role(&ctx, toggle_info.role).await?;
         }
         message.reply(ctx, "The role has been toggled").await?;
     } else if let Some(trick) = storage.tricks.get(&command) {
@@ -325,108 +335,6 @@ async fn len(
     message: &Message,
 ) -> Result<(), crate::Error> {
     message.reply(ctx, args.len().to_string()).await?;
-    Ok(())
-}
-
-async fn roletoggle(
-    args: &str,
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
-    if !check_admin(&ctx, message).await? {
-        return Ok(());
-    }
-
-    let args: Vec<_> = args.split(' ').collect();
-    match args[0] {
-        "add" => {
-            if args.len() != 3 {
-                let storage = GuildStorage::get(guild_id).await;
-                message
-                    .reply(
-                        ctx,
-                        format!(
-                            "`{}roletoggle add <name> <role-id>`",
-                            storage.command_prefix
-                        ),
-                    )
-                    .await?;
-                return Ok(());
-            }
-
-            let mut storage = GuildStorage::get_mut(guild_id).await;
-
-            let name = args[1].to_lowercase();
-            if COMMANDS.iter().any(|&(cmd_name, _)| cmd_name == name)
-                || storage.role_toggles.contains_key(&name)
-                || storage.tricks.contains_key(&name)
-            {
-                storage.discard();
-                message
-                    .reply(ctx, "A command with that name already exists")
-                    .await?;
-                return Ok(());
-            }
-
-            let role = match args[2].parse() {
-                Ok(role) => role,
-                Err(_) => {
-                    storage.discard();
-                    message.reply(ctx, "Invalid role id").await?;
-                    return Ok(());
-                }
-            };
-            let role = RoleId(role);
-            if role.to_role_cached(&ctx).is_none() {
-                storage.discard();
-                message.reply(ctx, "No such role with that id").await?;
-                return Ok(());
-            }
-
-            storage.role_toggles.insert(name, role);
-            storage.save().await;
-            message.reply(ctx, "Successfully added role toggle").await?;
-        }
-        "remove" => {
-            if args.len() != 2 {
-                let storage = GuildStorage::get(guild_id).await;
-                message
-                    .reply(
-                        ctx,
-                        format!("`{}roletoggle remove <name>`", storage.command_prefix),
-                    )
-                    .await?;
-                return Ok(());
-            }
-
-            let mut storage = GuildStorage::get_mut(guild_id).await;
-            let name = args[1].to_lowercase();
-            match storage.role_toggles.remove(&name) {
-                Some(_) => {
-                    storage.save().await;
-                    message
-                        .reply(ctx, "Successfully removed role toggle")
-                        .await?;
-                }
-                None => {
-                    storage.discard();
-                    message.reply(ctx, "No such role toggle").await?;
-                }
-            }
-        }
-        _ => {
-            let storage = GuildStorage::get(guild_id).await;
-            message
-                .reply(
-                    ctx,
-                    format!("`{}roletoggle <add|remove> ...`", storage.command_prefix),
-                )
-                .await?;
-            return Ok(());
-        }
-    }
-
     Ok(())
 }
 

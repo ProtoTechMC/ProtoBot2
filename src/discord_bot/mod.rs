@@ -5,6 +5,7 @@ mod guild_storage;
 mod mood;
 mod permanent_latest;
 mod role;
+mod roletoggle;
 mod storage;
 
 use crate::config;

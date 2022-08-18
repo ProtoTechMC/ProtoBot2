@@ -1,13 +1,14 @@
 use crate::discord_bot::chess::ChessState;
 use crate::discord_bot::permanent_latest::PermanentLatestInfo;
 use crate::discord_bot::role::RoleData;
+use crate::discord_bot::roletoggle::RoleToggleInfo;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
 use lazy_static::lazy_static;
 use log::warn;
 use serde::{Deserialize, Serialize};
-use serenity::model::id::{ChannelId, GuildId, RoleId};
+use serenity::model::id::{ChannelId, GuildId};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -29,7 +30,7 @@ pub struct GuildStorage {
     #[serde(default)]
     pub join_log_channel: Option<ChannelId>,
     #[serde(default)]
-    pub role_toggles: HashMap<String, RoleId>,
+    pub role_toggles: HashMap<String, RoleToggleInfo>,
     #[serde(default)]
     pub tricks: HashMap<String, String>,
     #[serde(default)]
