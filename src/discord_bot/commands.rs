@@ -9,20 +9,32 @@ use serenity::model::id::GuildId;
 use serenity::model::Permissions;
 
 macro_rules! count {
-    ($desc:literal) => { 1 };
-    ($desc:literal, $($rest:literal),*) => {
+    ($name:literal) => { 1 };
+    ($name:literal, $($rest:literal),*) => {
         1 + count!($($rest),*)
     }
 }
 
 macro_rules! declare_commands {
-    ($($name:literal => ($func:path, $description:literal)),* $(,)?) => {
-        pub(super) const COMMANDS: [(&str, &str); count!($($description),*)] = [$(($name, $description)),*];
+    ($($name:literal $(, $($alias:literal),+)? => ($func:path, $description:literal)),* $(,)?) => {
+        pub(super) const COMMANDS: [Command; count!($($name $(,$($alias),+)?),*)] = [
+            $(
+                Command{name:$name, description:$description, is_alias:false}
+                $(
+                    , $(Command{name:$alias, description:$description, is_alias:true}),+
+                )?
+            ),*
+        ];
 
         async fn do_run_command(command: &str, args: &str, guild_id: GuildId, ctx: Context, message: &Message) -> Result<(), crate::Error> {
             match command {
                 $(
-                $name => $func(args, guild_id, ctx, message).await,
+                    $name => $func(args, guild_id, ctx, message).await,
+                    $(
+                        $(
+                            $alias => $func(args, guild_id, ctx, message).await,
+                        )+
+                    )?
                 )*
                 _ => handle_custom_command(command, guild_id, ctx, message).await
             }
@@ -30,9 +42,15 @@ macro_rules! declare_commands {
     }
 }
 
+pub(super) struct Command {
+    pub(super) name: &'static str,
+    description: &'static str,
+    is_alias: bool,
+}
+
 declare_commands! {
     "prefix" => (prefix, "Change the command prefix"),
-    "brainfuck" => (brainfuck::run, "Brainfuck interpreter"),
+    "brainfuck", "bf" => (brainfuck::run, "Brainfuck interpreter"),
     "c2f" => (c2f, "Converts Celsius to Fahrenheit"),
     "cat" => (cat, "Cat pics"),
     "channels" => (channels, "Counts the number of channels in this guild"),
@@ -40,7 +58,7 @@ declare_commands! {
     "dog" => (dog, "Dog pics"),
     "echo" => (echo, "What goes around comes around"),
     "f2c" => (f2c, "Converts Fahrenheit to Celsius"),
-    "google" => (google, "Google search for lazy people"),
+    "google", "g" => (google, "Google search for lazy people"),
     "help" => (help, "Shows this help command"),
     "len" => (len, "Prints the length of its argument"),
     "mood" => (mood::run, "Prints the mood of its argument"),
@@ -365,7 +383,7 @@ async fn trick(
             let mut storage = GuildStorage::get_mut(guild_id).await;
 
             let name = args[1].to_lowercase();
-            if COMMANDS.iter().any(|&(cmd_name, _)| cmd_name == name)
+            if COMMANDS.iter().any(|command| command.name == name)
                 || storage.role_toggles.contains_key(&name)
                 || storage.tricks.contains_key(&name)
             {
@@ -429,11 +447,14 @@ async fn help(
     message: &Message,
 ) -> Result<(), crate::Error> {
     let storage = GuildStorage::get(guild_id).await;
-    let mut commands = COMMANDS.to_vec();
+    let mut commands: Vec<_> = COMMANDS
+        .iter()
+        .filter(|command| !command.is_alias)
+        .collect();
     let mut role_toggles: Vec<_> = storage.role_toggles.keys().collect();
     let mut tricks: Vec<_> = storage.tricks.keys().collect();
 
-    commands.sort_by_key(|&(name, _)| name);
+    commands.sort_by_key(|command| command.name);
     role_toggles.sort();
     tricks.sort();
 
@@ -447,8 +468,8 @@ async fn help(
                         "Built-in commands:",
                         commands
                             .iter()
-                            .map(|&(command, description)| {
-                                format!("• **{}**: {}", command, description)
+                            .map(|command| {
+                                format!("• **{}**: {}", command.name, command.description)
                             })
                             .collect::<Vec<_>>()
                             .join("\n"),

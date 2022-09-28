@@ -38,7 +38,7 @@ pub(crate) async fn run(
             let mut storage = GuildStorage::get_mut(guild_id).await;
 
             let name = args[1].to_lowercase();
-            if COMMANDS.iter().any(|&(cmd_name, _)| cmd_name == name)
+            if COMMANDS.iter().any(|command| command.name == name)
                 || storage.role_toggles.contains_key(&name)
                 || storage.tricks.contains_key(&name)
             {

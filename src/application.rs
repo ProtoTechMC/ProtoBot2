@@ -476,7 +476,7 @@ enum Answer {
 impl Answer {
     fn to_str(&self) -> Cow<str> {
         match self {
-            Answer::String(str) => Cow::Borrowed(&*str),
+            Answer::String(str) => Cow::Borrowed(&**str),
             Answer::StringArray(strs) => strs.join("\r\n").into(),
             Answer::StringArray2d(strs) => strs
                 .iter()
