@@ -4,6 +4,7 @@ mod commands;
 mod guild_storage;
 mod mood;
 mod permanent_latest;
+mod reaction_role_toggle;
 mod role;
 mod roletoggle;
 mod storage;
@@ -16,7 +17,7 @@ use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
-use serenity::model::channel::Message;
+use serenity::model::channel::{Message, Reaction};
 use serenity::model::gateway::Ready;
 use serenity::model::guild::Member;
 use serenity::model::id::GuildId;
@@ -162,13 +163,22 @@ impl EventHandler for Handler {
             }
         }
     }
+
+    async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
+        reaction_role_toggle::on_reaction_change(ctx, reaction, false).await;
+    }
+
+    async fn reaction_remove(&self, ctx: Context, reaction: Reaction) {
+        reaction_role_toggle::on_reaction_change(ctx, reaction, true).await;
+    }
 }
 
 pub(crate) async fn create_client() -> Result<Client, crate::Error> {
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS;
     Ok(Client::builder(&config::get().discord_token, intents)
         .event_handler(Handler)
         .await?)
