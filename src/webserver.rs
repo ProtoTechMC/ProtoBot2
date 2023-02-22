@@ -30,7 +30,7 @@ async fn post_application(
     }
 
     handle_application(
-        std::str::from_utf8(&*body::to_bytes(request.into_body()).await?)?,
+        std::str::from_utf8(&body::to_bytes(request.into_body()).await?)?,
         data,
     )
     .await?;

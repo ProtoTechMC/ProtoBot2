@@ -8,7 +8,7 @@ lazy_static! {
 }
 
 pub fn get() -> &'static Config {
-    &*CONFIG
+    &CONFIG
 }
 
 #[derive(Deserialize)]
