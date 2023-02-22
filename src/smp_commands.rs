@@ -161,6 +161,17 @@ where
                     send_command(socket, "scoreboard objectives setdisplay sidebar").await?;
                 }
             }
+            "t" => {
+                if args.len() > 1 {
+                    send_command(
+                        socket,
+                        &format!("scoreboard objectives setdisplay list {}", args[1]),
+                    )
+                    .await?;
+                } else {
+                    send_command(socket, "scoreboard objectives setdisplay list").await?;
+                }
+            }
             "backup" => {
                 create_backup(
                     socket,
