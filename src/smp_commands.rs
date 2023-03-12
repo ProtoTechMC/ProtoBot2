@@ -9,14 +9,6 @@ use nom::sequence::tuple;
 use nom::Finish;
 use pterodactyl_api::client::backups::BackupParams;
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize)]
-struct WsJson {
-    event: String,
-    #[serde(default)]
-    args: Vec<String>,
-}
 
 async fn create_backup<H: PteroWebSocketHandle>(
     handle: &mut H,
