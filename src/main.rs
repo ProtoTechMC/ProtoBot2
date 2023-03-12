@@ -13,6 +13,7 @@ use hyper::http;
 use lazy_static::lazy_static;
 use log::{error, info, Level, Record};
 use std::future::Future;
+use std::sync::Arc;
 use std::{env, io};
 use tokio::sync::Notify;
 
@@ -28,8 +29,6 @@ enum Error {
     Hyper(#[from] hyper::Error),
     #[error("HTTP Request Error: {0}")]
     Reqwest(#[from] reqwest::Error),
-    #[error("Websocket Error: {0}")]
-    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
     #[error("Join Error: {0}")]
     Join(#[from] tokio::task::JoinError),
     #[error("Json Error: {0}")]
@@ -38,6 +37,8 @@ enum Error {
     Serenity(#[from] serenity::Error),
     #[error("Utf8 Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+    #[error("Pterodactyl Error: {0}")]
+    Pterodactyl(#[from] pterodactyl_api::Error),
     #[error("Other Error: {0}")]
     Other(String),
 }
@@ -45,6 +46,7 @@ enum Error {
 #[derive(Clone)]
 pub struct ProtobotData {
     pub discord_handle: discord_bot::Handle,
+    pub pterodactyl: Arc<pterodactyl_api::client::Client>,
 }
 
 lazy_static! {
@@ -112,23 +114,31 @@ fn main() {
         }
     };
 
+    let protobot_data = ProtobotData {
+        discord_handle: discord_bot.cache_and_http.http.clone(),
+        pterodactyl: Arc::new(
+            pterodactyl_api::client::ClientBuilder::new(
+                &config::get().pterodactyl_domain,
+                &config::get().pterodactyl_api_key,
+            )
+            .build(),
+        ),
+    };
+
     if env::var("DISABLE_SMP_COMMANDS")
         .ok()
         .and_then(|var| var.parse::<bool>().ok())
         != Some(true)
     {
         for server_id in &config::get().pterodactyl_server_ids {
+            let protobot_data = protobot_data.clone();
             runtime.spawn(async move {
-                if let Err(err) = smp_commands::run(&server_id[..]).await {
+                if let Err(err) = smp_commands::run(&server_id[..], protobot_data).await {
                     error!("websocket error for server id {}: {}", server_id, err);
                 }
             });
         }
     }
-
-    let protobot_data = ProtobotData {
-        discord_handle: discord_bot.cache_and_http.http.clone(),
-    };
 
     runtime.spawn(async move {
         if let Err(err) = discord_bot::run(discord_bot).await {
