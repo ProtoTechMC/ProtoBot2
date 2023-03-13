@@ -1,17 +1,35 @@
 use crate::{config, smp_commands};
 use async_trait::async_trait;
+use lazy_static::lazy_static;
 use pterodactyl_api::client::backups::Backup;
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use pterodactyl_api::client::{PowerSignal, ServerState};
 use serenity::client::Context;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use std::time::Duration;
+use tokio::sync::Mutex;
+
+lazy_static! {
+    static ref COPY_UPDATE_MUTEX: Mutex<()> = Mutex::new(());
+}
 
 pub(crate) async fn run(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
     pterodactyl: &pterodactyl_api::client::Client,
 ) -> Result<(), crate::Error> {
+    let _guard = match COPY_UPDATE_MUTEX.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            command
+                .edit_original_interaction_response(&ctx.http, |message| {
+                    message.content("Copy is already currently being updated")
+                })
+                .await?;
+            return Ok(());
+        }
+    };
+
     let config = config::get();
 
     let smp_server = pterodactyl.get_server(&config.pterodactyl_smp);
