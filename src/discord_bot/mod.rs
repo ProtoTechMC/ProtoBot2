@@ -8,6 +8,7 @@ mod reaction_role_toggle;
 mod role;
 mod roletoggle;
 mod storage;
+mod update_copy;
 
 use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
@@ -28,14 +29,22 @@ use std::sync::Arc;
 
 pub(crate) type Handle = Arc<Http>;
 
-struct Handler;
+struct Handler {
+    pterodactyl: Arc<pterodactyl_api::client::Client>,
+}
 
 async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<()> {
     guild_id
         .set_application_commands(&ctx.http, |commands| {
-            commands.create_application_command(|command| {
-                command.name("hello").description("A test command")
-            })
+            commands
+                .create_application_command(|command| {
+                    command.name("hello").description("A test command")
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("update_copy")
+                        .description("Updates the SMP copy")
+                })
         })
         .await?;
     Ok(())
@@ -45,6 +54,7 @@ async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<(
 async fn process_command(
     ctx: &Context,
     command: ApplicationCommandInteraction,
+    pterodactyl: &pterodactyl_api::client::Client,
 ) -> serenity::Result<()> {
     match &command.data.name[..] {
         "hello" => {
@@ -56,6 +66,26 @@ async fn process_command(
                 })
                 .await?;
         }
+        "update_copy" => {
+            command
+                .create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content("Updating copy..."))
+                })
+                .await?;
+            match update_copy::run(ctx, &command, pterodactyl).await {
+                Err(crate::Error::Serenity(err)) => return Err(err),
+                Err(err) => {
+                    command
+                        .edit_original_interaction_response(&ctx.http, |message| {
+                            message.content(format!("Error updating copy: {}", err))
+                        })
+                        .await?;
+                }
+                Ok(()) => {}
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -63,64 +93,6 @@ async fn process_command(
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, new_message: Message) {
-        if new_message.author.bot {
-            return;
-        }
-        let guild_id = match new_message.guild_id {
-            Some(guild_id) => guild_id,
-            None => return,
-        };
-
-        enum MessageHandling<'a> {
-            Command(&'a str),
-            PermanentLatest,
-        }
-
-        let message_handling = {
-            let storage = GuildStorage::get(guild_id).await;
-            if storage
-                .permanent_latest
-                .is_permanent_latest_channel(new_message.channel_id)
-            {
-                MessageHandling::PermanentLatest
-            } else {
-                match new_message.content.strip_prefix(&storage.command_prefix) {
-                    Some(content) => MessageHandling::Command(content),
-                    None => return,
-                }
-            }
-        };
-
-        if let Err(err) = match message_handling {
-            MessageHandling::Command(command) => {
-                commands::run(command, guild_id, ctx, &new_message).await
-            }
-            MessageHandling::PermanentLatest => {
-                permanent_latest::on_message(guild_id, ctx, &new_message).await
-            }
-        } {
-            warn!("Error executing command: {}", err);
-        }
-    }
-
-    async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
-        if let Err(err) = create_commands(&ctx, config::get().guild_id).await {
-            error!("Failed to register commands: {}", err);
-            return;
-        }
-
-        info!("Discord bot ready");
-    }
-
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
-            if let Err(err) = process_command(&ctx, command).await {
-                error!("Failed to process command: {}", err);
-            }
-        }
-    }
-
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
         if let Some(join_log_channel) = GuildStorage::get(new_member.guild_id)
             .await
@@ -164,6 +136,47 @@ impl EventHandler for Handler {
         }
     }
 
+    async fn message(&self, ctx: Context, new_message: Message) {
+        if new_message.author.bot {
+            return;
+        }
+        let guild_id = match new_message.guild_id {
+            Some(guild_id) => guild_id,
+            None => return,
+        };
+
+        enum MessageHandling<'a> {
+            Command(&'a str),
+            PermanentLatest,
+        }
+
+        let message_handling = {
+            let storage = GuildStorage::get(guild_id).await;
+            if storage
+                .permanent_latest
+                .is_permanent_latest_channel(new_message.channel_id)
+            {
+                MessageHandling::PermanentLatest
+            } else {
+                match new_message.content.strip_prefix(&storage.command_prefix) {
+                    Some(content) => MessageHandling::Command(content),
+                    None => return,
+                }
+            }
+        };
+
+        if let Err(err) = match message_handling {
+            MessageHandling::Command(command) => {
+                commands::run(command, guild_id, ctx, &new_message).await
+            }
+            MessageHandling::PermanentLatest => {
+                permanent_latest::on_message(guild_id, ctx, &new_message).await
+            }
+        } {
+            warn!("Error executing command: {}", err);
+        }
+    }
+
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
         reaction_role_toggle::on_reaction_change(ctx, reaction, false).await;
     }
@@ -171,16 +184,35 @@ impl EventHandler for Handler {
     async fn reaction_remove(&self, ctx: Context, reaction: Reaction) {
         reaction_role_toggle::on_reaction_change(ctx, reaction, true).await;
     }
+
+    async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
+        if let Err(err) = create_commands(&ctx, config::get().guild_id).await {
+            error!("Failed to register commands: {}", err);
+            return;
+        }
+
+        info!("Discord bot ready");
+    }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            if let Err(err) = process_command(&ctx, command, &self.pterodactyl).await {
+                error!("Failed to process command: {}", err);
+            }
+        }
+    }
 }
 
-pub(crate) async fn create_client() -> Result<Client, crate::Error> {
+pub(crate) async fn create_client(
+    pterodactyl: Arc<pterodactyl_api::client::Client>,
+) -> Result<Client, crate::Error> {
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MESSAGE_REACTIONS;
     Ok(Client::builder(&config::get().discord_token, intents)
-        .event_handler(Handler)
+        .event_handler(Handler { pterodactyl })
         .await?)
 }
 

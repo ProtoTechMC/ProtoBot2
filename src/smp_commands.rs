@@ -7,14 +7,13 @@ use nom::combinator::{map, recognize};
 use nom::multi::many1;
 use nom::sequence::tuple;
 use nom::Finish;
-use pterodactyl_api::client::backups::BackupParams;
+use pterodactyl_api::client::backups::{Backup, BackupParams};
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 
-async fn create_backup<H: PteroWebSocketHandle>(
-    handle: &mut H,
+pub(crate) async fn create_backup(
     server: &pterodactyl_api::client::Server<'_>,
     name: Option<String>,
-) -> Result<(), crate::Error> {
+) -> Result<Backup, crate::Error> {
     let backup_limit = server
         .get_details()
         .await?
@@ -38,7 +37,7 @@ async fn create_backup<H: PteroWebSocketHandle>(
         }
     }
 
-    server
+    let backup = server
         .create_backup_with_params(if let Some(name) = name {
             BackupParams::new().with_name(name)
         } else {
@@ -46,13 +45,7 @@ async fn create_backup<H: PteroWebSocketHandle>(
         })
         .await?;
 
-    handle
-        .send_command(
-            "tellraw @a \"Backup being created. Wait a minute to be sure the backup has finished\"",
-        )
-        .await?;
-
-    Ok(())
+    Ok(backup)
 }
 
 async fn handle_chat_message<H: PteroWebSocketHandle>(
@@ -95,7 +88,6 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
             }
             "backup" => {
                 create_backup(
-                    handle,
                     server,
                     if args.len() > 1 {
                         Some(args[1..].join(" "))
@@ -104,6 +96,11 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
                     },
                 )
                 .await?;
+                handle
+                    .send_command(
+                        "tellraw @a \"Backup being created. Wait a minute to be sure the backup has finished\"",
+                    )
+                    .await?;
             }
             _ => {}
         }

@@ -23,6 +23,8 @@ pub struct Config {
     pub pterodactyl_domain: String,
     pub pterodactyl_server_ids: Vec<String>,
     pub pterodactyl_api_key: String,
+    pub pterodactyl_smp: String,
+    pub pterodactyl_smp_copy: String,
 }
 
 impl Config {

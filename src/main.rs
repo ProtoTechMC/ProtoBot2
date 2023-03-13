@@ -106,7 +106,15 @@ fn main() {
         .build()
         .expect("Failed to build runtime");
 
-    let discord_bot = match runtime.block_on(discord_bot::create_client()) {
+    let pterodactyl = Arc::new(
+        pterodactyl_api::client::ClientBuilder::new(
+            &config::get().pterodactyl_domain,
+            &config::get().pterodactyl_api_key,
+        )
+        .build(),
+    );
+
+    let discord_bot = match runtime.block_on(discord_bot::create_client(pterodactyl.clone())) {
         Ok(bot) => bot,
         Err(err) => {
             error!("Failed to start discord bot: {}", err);
@@ -116,13 +124,7 @@ fn main() {
 
     let protobot_data = ProtobotData {
         discord_handle: discord_bot.cache_and_http.http.clone(),
-        pterodactyl: Arc::new(
-            pterodactyl_api::client::ClientBuilder::new(
-                &config::get().pterodactyl_domain,
-                &config::get().pterodactyl_api_key,
-            )
-            .build(),
-        ),
+        pterodactyl,
     };
 
     if env::var("DISABLE_SMP_COMMANDS")
