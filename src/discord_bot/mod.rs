@@ -145,36 +145,38 @@ impl EventHandler for Handler {
             None => return,
         };
 
-        enum MessageHandling<'a> {
-            Command(&'a str),
-            PermanentLatest,
-        }
+        tokio::runtime::Handle::current().spawn(async move {
+            enum MessageHandling<'a> {
+                Command(&'a str),
+                PermanentLatest,
+            }
 
-        let message_handling = {
-            let storage = GuildStorage::get(guild_id).await;
-            if storage
-                .permanent_latest
-                .is_permanent_latest_channel(new_message.channel_id)
-            {
-                MessageHandling::PermanentLatest
-            } else {
-                match new_message.content.strip_prefix(&storage.command_prefix) {
-                    Some(content) => MessageHandling::Command(content),
-                    None => return,
+            let message_handling = {
+                let storage = GuildStorage::get(guild_id).await;
+                if storage
+                    .permanent_latest
+                    .is_permanent_latest_channel(new_message.channel_id)
+                {
+                    MessageHandling::PermanentLatest
+                } else {
+                    match new_message.content.strip_prefix(&storage.command_prefix) {
+                        Some(content) => MessageHandling::Command(content),
+                        None => return,
+                    }
                 }
-            }
-        };
+            };
 
-        if let Err(err) = match message_handling {
-            MessageHandling::Command(command) => {
-                commands::run(command, guild_id, ctx, &new_message).await
+            if let Err(err) = match message_handling {
+                MessageHandling::Command(command) => {
+                    commands::run(command, guild_id, ctx, &new_message).await
+                }
+                MessageHandling::PermanentLatest => {
+                    permanent_latest::on_message(guild_id, ctx, &new_message).await
+                }
+            } {
+                warn!("Error executing command: {}", err);
             }
-            MessageHandling::PermanentLatest => {
-                permanent_latest::on_message(guild_id, ctx, &new_message).await
-            }
-        } {
-            warn!("Error executing command: {}", err);
-        }
+        });
     }
 
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
@@ -196,9 +198,12 @@ impl EventHandler for Handler {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            if let Err(err) = process_command(&ctx, command, &self.pterodactyl).await {
-                error!("Failed to process command: {}", err);
-            }
+            let pterodactyl = self.pterodactyl.clone();
+            tokio::runtime::Handle::current().spawn(async move {
+                if let Err(err) = process_command(&ctx, command, &pterodactyl).await {
+                    error!("Failed to process command: {}", err);
+                }
+            });
         }
     }
 }
