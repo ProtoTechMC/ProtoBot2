@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use serenity::model::id::{ChannelId, GuildId};
+use serenity::model::id::{ChannelId, GuildId, RoleId};
 use std::fs::File;
 
 lazy_static! {
@@ -25,6 +25,7 @@ pub struct Config {
     pub pterodactyl_api_key: String,
     pub pterodactyl_smp: String,
     pub pterodactyl_smp_copy: String,
+    pub panel_access_role: RoleId,
 }
 
 impl Config {

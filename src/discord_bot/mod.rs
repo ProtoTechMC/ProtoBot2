@@ -67,6 +67,23 @@ async fn process_command(
                 .await?;
         }
         "update_copy" => {
+            if command
+                .member
+                .as_ref()
+                .map(|member| member.roles.contains(&config::get().panel_access_role))
+                != Some(true)
+            {
+                command
+                    .create_interaction_response(&ctx.http, |response| {
+                        response
+                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|message| {
+                                message.content("You do not have permission to use that command")
+                            })
+                    })
+                    .await?;
+                return Ok(());
+            }
             command
                 .create_interaction_response(&ctx.http, |response| {
                     response
