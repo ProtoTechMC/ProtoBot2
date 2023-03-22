@@ -80,7 +80,10 @@ pub(crate) async fn run(
     ctx: Context,
     message: &Message,
 ) -> Result<(), crate::Error> {
-    info!("Received discord command \"{}\"", command);
+    info!(
+        "Received discord command \"{}\" from user \"{}\" (ID {})",
+        command, message.author.name, message.author.id
+    );
     let (command, args) = match command.find(' ') {
         Some(index) => {
             let (command, args) = command.split_at(index);
