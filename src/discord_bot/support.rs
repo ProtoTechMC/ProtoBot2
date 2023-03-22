@@ -120,7 +120,7 @@ async fn show_leaderboard(
                 let ctx = ctx.clone();
                 async move {
                     format!(
-                        "{}. {}: {}",
+                        "{}. **{}**: {}",
                         i + 1,
                         user.to_user(&ctx)
                             .await
@@ -137,7 +137,7 @@ async fn show_leaderboard(
     message
         .channel_id
         .send_message(&ctx, |message| {
-            message.embed(|embed| embed.field("Sent to support leaderboard:", embed_value, false))
+            message.embed(|embed| embed.field("Sent-to-support leaderboard:", embed_value, false))
         })
         .await?;
 
