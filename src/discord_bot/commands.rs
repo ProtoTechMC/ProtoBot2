@@ -1,7 +1,7 @@
-use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
 use crate::discord_bot::{
     brainfuck, chess, mood, permanent_latest, reaction_role_toggle, role, roletoggle, storage,
+    support,
 };
 use chrono::Datelike;
 use log::info;
@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
 use serenity::model::id::GuildId;
-use serenity::model::{Permissions, Timestamp};
+use serenity::model::Permissions;
 
 macro_rules! count {
     ($name:literal) => { 1 };
@@ -70,7 +70,7 @@ declare_commands! {
     "role" => (role::run, "Allows members to manage specified roles"),
     "roletoggle" => (roletoggle::run, "Adds a role toggle"),
     "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
-    "support" => (support, "Use on people who are asking for support without using the support channel"),
+    "support" => (support::run, "Use on people who are asking for support without using the support channel"),
     "trick" => (trick, "Adds a trick"),
 }
 
@@ -444,69 +444,6 @@ async fn trick(
             return Ok(());
         }
     }
-
-    Ok(())
-}
-
-const MAX_SUPPORT_USED_ON_TIME: i64 = 2 * 24 * 60 * 60; // 2 days
-const MIN_SUPPORT_USE_TIME: i64 = 7 * 24 * 60 * 60; // 1 week
-
-async fn support(
-    _args: &str,
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
-    let Some(member) = &message.member else { return Ok(()) };
-    let now = Timestamp::now();
-    if member
-        .joined_at
-        .map(|joined_at| now.unix_timestamp() - joined_at.unix_timestamp() >= MIN_SUPPORT_USE_TIME)
-        != Some(true)
-    {
-        message
-            .reply(
-                ctx.http,
-                "You haven't been in this Discord for long enough to use that command",
-            )
-            .await?;
-        return Ok(());
-    }
-
-    let Some(referenced_message) = &message.referenced_message else {
-        message.reply(ctx.http, "You need to reply to a message").await?;
-        return Ok(());
-    };
-
-    // Need to call http.get_member because referenced_message doesn't have enough information to
-    // obtain the member in any normal way
-    let referenced_member = ctx
-        .http
-        .get_member(guild_id.0, referenced_message.author.id.0)
-        .await?;
-
-    if referenced_member.joined_at.map(|joined_at| {
-        now.unix_timestamp() - joined_at.unix_timestamp() <= MAX_SUPPORT_USED_ON_TIME
-    }) != Some(true)
-    {
-        message
-            .reply(
-                ctx.http,
-                "This person has been in the Discord for too long to use this command on them",
-            )
-            .await?;
-        return Ok(());
-    }
-
-    referenced_message.reply_ping(&ctx.http, "Please read the message in the role reactions channel and react again. Questions should only go in the support channel").await?;
-    ctx.http
-        .remove_member_role(
-            guild_id.0,
-            referenced_member.user.id.0,
-            config::get().channel_access_role.0,
-            Some("support command"),
-        )
-        .await?;
 
     Ok(())
 }

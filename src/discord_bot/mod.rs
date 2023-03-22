@@ -8,6 +8,7 @@ mod reaction_role_toggle;
 mod role;
 mod roletoggle;
 mod storage;
+mod support;
 mod update_copy;
 
 use crate::config;

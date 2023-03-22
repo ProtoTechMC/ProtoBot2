@@ -9,8 +9,8 @@ use lazy_static::lazy_static;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serenity::model::channel::ReactionType;
-use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId};
-use std::collections::HashMap;
+use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId, UserId};
+use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 
 lazy_static! {
@@ -38,6 +38,10 @@ pub struct GuildStorage {
     pub permanent_latest: PermanentLatestInfo,
     #[serde(default)]
     pub reaction_roles: HashMap<MessageId, Vec<(ReactionType, RoleId)>>,
+    #[serde(default)]
+    pub send_to_support_leaderboard: HashMap<UserId, u32>,
+    #[serde(default)]
+    pub users_sent_to_support: HashSet<UserId>,
 }
 
 impl Default for GuildStorage {
@@ -52,6 +56,8 @@ impl Default for GuildStorage {
             tricks: HashMap::new(),
             permanent_latest: PermanentLatestInfo::default(),
             reaction_roles: HashMap::new(),
+            send_to_support_leaderboard: HashMap::new(),
+            users_sent_to_support: HashSet::new(),
         }
     }
 }
