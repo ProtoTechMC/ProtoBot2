@@ -475,9 +475,7 @@ async fn support(
         return Ok(());
     };
 
-    let Some(referenced_member) = &referenced_message.member else {
-        return Err(crate::Error::Other("Referenced message had no owner".to_owned()));
-    };
+    let referenced_member = referenced_message.member(&ctx).await?;
 
     if referenced_member.joined_at.map(|joined_at| {
         now.unix_timestamp() - joined_at.unix_timestamp() <= MAX_SUPPORT_USED_ON_TIME
@@ -496,11 +494,7 @@ async fn support(
     ctx.http
         .remove_member_role(
             guild_id.0,
-            referenced_member
-                .user
-                .as_ref()
-                .map(|user| user.id.0)
-                .unwrap_or_default(),
+            referenced_member.user.id.0,
             config::get().channel_access_role.0,
             Some("support command"),
         )
