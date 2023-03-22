@@ -475,7 +475,12 @@ async fn support(
         return Ok(());
     };
 
-    let referenced_member = referenced_message.member(&ctx).await?;
+    // Need to call http.get_member because referenced_message doesn't have enough information to
+    // obtain the member in any normal way
+    let referenced_member = ctx
+        .http
+        .get_member(guild_id.0, referenced_message.author.id.0)
+        .await?;
 
     if referenced_member.joined_at.map(|joined_at| {
         now.unix_timestamp() - joined_at.unix_timestamp() <= MAX_SUPPORT_USED_ON_TIME
