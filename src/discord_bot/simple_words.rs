@@ -38,22 +38,24 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
                 current_word_start = None;
                 let word = &message.content[word_start..index];
                 if !is_word_allowed(word) {
-                    illegal_words.push(word.to_owned());
+                    illegal_words.push(word.to_ascii_lowercase());
                 }
             }
         }
         if let Some(word_start) = current_word_start {
             let word = &message.content[word_start..];
             if !is_word_allowed(word) {
-                illegal_words.push(word.to_owned());
+                illegal_words.push(word.to_ascii_lowercase());
             }
         }
         if error_message.is_none() && !illegal_words.is_empty() {
+            illegal_words.dedup();
             error_message = Some(format!(
                 "Message has the following hard words: {}",
                 illegal_words
                     .into_iter()
                     .take(5)
+                    .map(|word| format!("\"{}\"", word))
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
