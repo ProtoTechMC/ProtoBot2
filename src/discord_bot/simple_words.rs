@@ -1,14 +1,16 @@
+use crate::config;
 use lazy_static::lazy_static;
 use serenity::client::Context;
-use serenity::model::channel::{Message, MessageFlags};
+use serenity::model::channel::Message;
 use std::collections::HashSet;
-
-const NUM_WORDS: usize = 1000;
 
 lazy_static! {
     static ref TOP_10K_WORDS: HashSet<&'static str> = {
-        let mut set = HashSet::with_capacity(NUM_WORDS);
-        for word in include!("top_10k_words.txt").into_iter().take(NUM_WORDS) {
+        let mut set = HashSet::with_capacity(config::get().num_simple_words);
+        for word in include!("top_10k_words.txt")
+            .into_iter()
+            .take(config::get().num_simple_words)
+        {
             set.insert(word);
         }
         set

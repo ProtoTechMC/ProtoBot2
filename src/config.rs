@@ -29,6 +29,12 @@ pub struct Config {
     pub channel_access_role: RoleId,
     #[serde(default)]
     pub simple_words_channel: Option<ChannelId>,
+    #[serde(default = "default_num_simple_words")]
+    pub num_simple_words: usize,
+}
+
+fn default_num_simple_words() -> usize {
+    1000
 }
 
 impl Config {
