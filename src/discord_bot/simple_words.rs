@@ -21,7 +21,7 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
     let mut current_word_start = None;
     for (index, char) in message.content.char_indices() {
         if !char.is_ascii() {
-            error_message = Some("Message contains non-ASCII characters");
+            error_message = Some("Message has a hard thing");
             break;
         }
         if char.is_ascii_alphabetic() {
@@ -32,7 +32,7 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
             current_word_start = None;
             let word = &message.content[word_start..index];
             if !is_word_allowed(word) {
-                error_message = Some("Message contains a complex word");
+                error_message = Some("Message has a hard word");
                 break;
             }
         }
@@ -40,7 +40,7 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
     if let Some(word_start) = current_word_start {
         let word = &message.content[word_start..];
         if !is_word_allowed(word) {
-            error_message = Some("Message contains a complex word");
+            error_message = Some("Message has a hard word");
         }
     }
     if let Some(error_message) = error_message {
