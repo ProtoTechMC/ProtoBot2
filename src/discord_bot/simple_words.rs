@@ -20,29 +20,33 @@ lazy_static! {
 pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), crate::Error> {
     // find words in message
     let mut error_message = None;
-    let mut current_word_start = None;
-    for (index, char) in message.content.char_indices() {
-        if !char.is_ascii() {
-            error_message = Some("Message has a hard thing");
-            break;
-        }
-        if char.is_ascii_alphabetic() {
-            if current_word_start.is_none() {
-                current_word_start = Some(index);
-            }
-        } else if let Some(word_start) = current_word_start {
-            current_word_start = None;
-            let word = &message.content[word_start..index];
-            if !is_word_allowed(word) {
-                error_message = Some("Message has a hard word");
+    if !message.attachments.is_empty() {
+        error_message = Some("Message has an image");
+    } else {
+        let mut current_word_start = None;
+        for (index, char) in message.content.char_indices() {
+            if !char.is_ascii() {
+                error_message = Some("Message has a hard thing");
                 break;
             }
+            if char.is_ascii_alphabetic() {
+                if current_word_start.is_none() {
+                    current_word_start = Some(index);
+                }
+            } else if let Some(word_start) = current_word_start {
+                current_word_start = None;
+                let word = &message.content[word_start..index];
+                if !is_word_allowed(word) {
+                    error_message = Some("Message has a hard word");
+                    break;
+                }
+            }
         }
-    }
-    if let Some(word_start) = current_word_start {
-        let word = &message.content[word_start..];
-        if !is_word_allowed(word) {
-            error_message = Some("Message has a hard word");
+        if let Some(word_start) = current_word_start {
+            let word = &message.content[word_start..];
+            if !is_word_allowed(word) {
+                error_message = Some("Message has a hard word");
+            }
         }
     }
     if let Some(error_message) = error_message {
@@ -53,9 +57,11 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
                 new_message.content(format!("{}! Your original message was:", error_message))
             })
             .await?;
-        dm_channel
-            .send_message(ctx, |new_message| new_message.content(&message.content))
-            .await?;
+        if !message.content.is_empty() {
+            dm_channel
+                .send_message(ctx, |new_message| new_message.content(&message.content))
+                .await?;
+        }
     }
     Ok(())
 }
