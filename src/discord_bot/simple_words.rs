@@ -21,12 +21,13 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
     // find words in message
     let mut error_message = None;
     if !message.attachments.is_empty() {
-        error_message = Some("Message has an image");
+        error_message = Some("Message has an image".to_owned());
     } else {
+        let mut illegal_words = Vec::new();
         let mut current_word_start = None;
         for (index, char) in message.content.char_indices() {
             if !char.is_ascii() {
-                error_message = Some("Message has a hard thing");
+                error_message = Some("Message has a hard character".to_owned());
                 break;
             }
             if char.is_ascii_alphabetic() {
@@ -37,16 +38,25 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
                 current_word_start = None;
                 let word = &message.content[word_start..index];
                 if !is_word_allowed(word) {
-                    error_message = Some("Message has a hard word");
-                    break;
+                    illegal_words.push(word.to_owned());
                 }
             }
         }
         if let Some(word_start) = current_word_start {
             let word = &message.content[word_start..];
             if !is_word_allowed(word) {
-                error_message = Some("Message has a hard word");
+                illegal_words.push(word.to_owned());
             }
+        }
+        if error_message.is_none() && !illegal_words.is_empty() {
+            error_message = Some(format!(
+                "Message has the following hard words: {}",
+                illegal_words
+                    .into_iter()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
     }
     if let Some(error_message) = error_message {
