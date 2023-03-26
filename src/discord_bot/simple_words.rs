@@ -25,12 +25,13 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
     } else {
         let mut illegal_words = Vec::new();
         let mut current_word_start = None;
+        let mut prev_char = None;
         for (index, char) in message.content.char_indices() {
             if !char.is_ascii() {
                 error_message = Some("Message has a hard character".to_owned());
                 break;
             }
-            if char.is_ascii_alphabetic() {
+            if is_allowed_in_word(&message.content, index, char, prev_char) {
                 if current_word_start.is_none() {
                     current_word_start = Some(index);
                 }
@@ -41,6 +42,7 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
                     illegal_words.push(word.to_ascii_lowercase());
                 }
             }
+            prev_char = Some(char);
         }
         if let Some(word_start) = current_word_start {
             let word = &message.content[word_start..];
@@ -78,8 +80,29 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
     Ok(())
 }
 
+fn is_allowed_in_word(whole: &str, index: usize, char: char, prev_char: Option<char>) -> bool {
+    if char.is_ascii_alphabetic() {
+        return true;
+    }
+    if char == '\'' {
+        if let Some(prev_char) = prev_char {
+            if prev_char.is_ascii_alphabetic() {
+                let next_index = index + char.len_utf8();
+                if next_index < whole.len() {
+                    let next_char = whole[next_index..].chars().next().unwrap();
+                    if next_char.is_ascii_alphabetic() {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
 fn is_word_allowed(word: &str) -> bool {
-    let lowercase = word.to_ascii_lowercase();
+    let lowercase = word.to_ascii_lowercase().replace('\'', "");
     TOP_10K_WORDS.contains(&lowercase[..])
         || (lowercase.ends_with('s') && TOP_10K_WORDS.contains(&lowercase[..lowercase.len() - 1]))
 }
