@@ -7,6 +7,7 @@ mod permanent_latest;
 mod reaction_role_toggle;
 mod role;
 mod roletoggle;
+mod simple_words;
 mod storage;
 mod support;
 mod update_copy;
@@ -167,6 +168,7 @@ impl EventHandler for Handler {
             enum MessageHandling<'a> {
                 Command(&'a str),
                 PermanentLatest,
+                SimpleWords,
             }
 
             let message_handling = {
@@ -179,7 +181,13 @@ impl EventHandler for Handler {
                 } else {
                     match new_message.content.strip_prefix(&storage.command_prefix) {
                         Some(content) => MessageHandling::Command(content),
-                        None => return,
+                        None => {
+                            if config::get().simple_words_channel == Some(new_message.channel_id) {
+                                MessageHandling::SimpleWords
+                            } else {
+                                return;
+                            }
+                        }
                     }
                 }
             };
@@ -191,8 +199,9 @@ impl EventHandler for Handler {
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
                 }
+                MessageHandling::SimpleWords => simple_words::on_message(ctx, &new_message).await,
             } {
-                warn!("Error executing command: {}", err);
+                warn!("Error processing message: {}", err);
             }
         });
     }
