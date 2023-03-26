@@ -45,13 +45,14 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
     }
     if let Some(error_message) = error_message {
         message.delete(&ctx).await?;
-        message
-            .channel_id
-            .send_message(ctx, |message| {
-                message
-                    .flags(MessageFlags::EPHEMERAL)
-                    .content(error_message)
+        let dm_channel = message.author.create_dm_channel(&ctx).await?;
+        dm_channel
+            .send_message(&ctx, |new_message| {
+                new_message.content(format!("{}! Your original message was:", error_message))
             })
+            .await?;
+        dm_channel
+            .send_message(ctx, |new_message| new_message.content(&message.content))
             .await?;
     }
     Ok(())
