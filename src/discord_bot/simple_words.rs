@@ -67,5 +67,7 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
 }
 
 fn is_word_allowed(word: &str) -> bool {
-    TOP_10K_WORDS.contains(&word.to_ascii_lowercase()[..])
+    let lowercase = word.to_ascii_lowercase();
+    TOP_10K_WORDS.contains(&lowercase[..])
+        || (lowercase.ends_with('s') && TOP_10K_WORDS.contains(&lowercase[..lowercase.len() - 1]))
 }
