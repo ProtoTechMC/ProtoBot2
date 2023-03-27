@@ -1,7 +1,8 @@
 use crate::config;
 use lazy_static::lazy_static;
 use serenity::client::Context;
-use serenity::model::channel::Message;
+use serenity::model::id::{ChannelId, MessageId};
+use serenity::model::user::User;
 use std::collections::HashSet;
 
 lazy_static! {
@@ -17,27 +18,34 @@ lazy_static! {
     };
 }
 
-pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), crate::Error> {
+pub(crate) async fn on_message(
+    ctx: Context,
+    has_attachments: bool,
+    content: &str,
+    author: &User,
+    channel_id: ChannelId,
+    message_id: MessageId,
+) -> Result<(), crate::Error> {
     // find words in message
     let mut error_message = None;
-    if !message.attachments.is_empty() {
+    if has_attachments {
         error_message = Some("Message has an image".to_owned());
     } else {
         let mut illegal_words = Vec::new();
         let mut current_word_start = None;
         let mut prev_char = None;
-        for (index, char) in message.content.char_indices() {
+        for (index, char) in content.char_indices() {
             if !char.is_ascii() {
                 error_message = Some("Message has a hard character".to_owned());
                 break;
             }
-            if is_allowed_in_word(&message.content, index, char, prev_char) {
+            if is_allowed_in_word(content, index, char, prev_char) {
                 if current_word_start.is_none() {
                     current_word_start = Some(index);
                 }
             } else if let Some(word_start) = current_word_start {
                 current_word_start = None;
-                let word = &message.content[word_start..index];
+                let word = &content[word_start..index];
                 if !is_word_allowed(word) {
                     illegal_words.push(word.to_ascii_lowercase());
                 }
@@ -45,7 +53,7 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
             prev_char = Some(char);
         }
         if let Some(word_start) = current_word_start {
-            let word = &message.content[word_start..];
+            let word = &content[word_start..];
             if !is_word_allowed(word) {
                 illegal_words.push(word.to_ascii_lowercase());
             }
@@ -64,16 +72,16 @@ pub(crate) async fn on_message(ctx: Context, message: &Message) -> Result<(), cr
         }
     }
     if let Some(error_message) = error_message {
-        message.delete(&ctx).await?;
-        let dm_channel = message.author.create_dm_channel(&ctx).await?;
+        channel_id.delete_message(&ctx, message_id).await?;
+        let dm_channel = author.create_dm_channel(&ctx).await?;
         dm_channel
             .send_message(&ctx, |new_message| {
                 new_message.content(format!("{}! Your original message was:", error_message))
             })
             .await?;
-        if !message.content.is_empty() {
+        if !content.is_empty() {
             dm_channel
-                .send_message(ctx, |new_message| new_message.content(&message.content))
+                .send_message(ctx, |new_message| new_message.content(content))
                 .await?;
         }
     }

@@ -21,6 +21,7 @@ use serenity::http::Http;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
 use serenity::model::channel::{Message, Reaction};
+use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
 use serenity::model::guild::Member;
 use serenity::model::id::GuildId;
@@ -199,9 +200,51 @@ impl EventHandler for Handler {
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
                 }
-                MessageHandling::SimpleWords => simple_words::on_message(ctx, &new_message).await,
+                MessageHandling::SimpleWords => {
+                    simple_words::on_message(
+                        ctx,
+                        !new_message.attachments.is_empty(),
+                        &new_message.content,
+                        &new_message.author,
+                        new_message.channel_id,
+                        new_message.id,
+                    )
+                    .await
+                }
             } {
                 warn!("Error processing message: {}", err);
+            }
+        });
+    }
+
+    async fn message_update(
+        &self,
+        ctx: Context,
+        _old_if_available: Option<Message>,
+        _new: Option<Message>,
+        event: MessageUpdateEvent,
+    ) {
+        if config::get().simple_words_channel != Some(event.channel_id) {
+            return;
+        }
+        let Some(content) = event.content else { return; };
+        let Some(author) = event.author else { return; };
+        tokio::runtime::Handle::current().spawn(async move {
+            if let Err(err) = simple_words::on_message(
+                ctx,
+                event
+                    .attachments
+                    .as_ref()
+                    .map(|attachments| attachments.is_empty())
+                    == Some(false),
+                &content,
+                &author,
+                event.channel_id,
+                event.id,
+            )
+            .await
+            {
+                warn!("Error processing message edit: {}", err);
             }
         });
     }
