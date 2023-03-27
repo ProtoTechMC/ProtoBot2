@@ -212,7 +212,10 @@ impl EventHandler for Handler {
                     .await
                 }
             } {
-                warn!("Error processing message: {}", err);
+                warn!(
+                    "Error processing message from \"{}\" (ID {}): {}",
+                    new_message.author.name, new_message.author.id, err
+                );
             }
         });
     }
@@ -244,7 +247,10 @@ impl EventHandler for Handler {
             )
             .await
             {
-                warn!("Error processing message edit: {}", err);
+                warn!(
+                    "Error processing message edit from \"{}\" (ID {}): {}",
+                    author.name, author.id, err
+                );
             }
         });
     }
