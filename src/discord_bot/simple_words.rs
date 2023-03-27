@@ -1,4 +1,3 @@
-use crate::config;
 use lazy_static::lazy_static;
 use serenity::client::Context;
 use serenity::model::id::{ChannelId, MessageId};
@@ -7,11 +6,8 @@ use std::collections::HashSet;
 
 lazy_static! {
     static ref TOP_10K_WORDS: HashSet<&'static str> = {
-        let mut set = HashSet::with_capacity(config::get().num_simple_words);
-        for word in include!("top_10k_words.txt")
-            .into_iter()
-            .take(config::get().num_simple_words)
-        {
+        let mut set = HashSet::with_capacity(5000);
+        for word in include!("simple_writer_words.txt") {
             set.insert(word);
         }
         set
@@ -35,7 +31,7 @@ pub(crate) async fn on_message(
         let mut current_word_start = None;
         let mut prev_char = None;
         for (index, char) in content.char_indices() {
-            if !char.is_ascii() {
+            if !char.is_ascii() && char != '’' {
                 error_message = Some("Message has a hard character".to_owned());
                 break;
             }
@@ -92,7 +88,7 @@ fn is_allowed_in_word(whole: &str, index: usize, char: char, prev_char: Option<c
     if char.is_ascii_alphabetic() {
         return true;
     }
-    if char == '\'' {
+    if char == '\'' || char == '’' {
         if let Some(prev_char) = prev_char {
             if prev_char.is_ascii_alphabetic() {
                 let next_index = index + char.len_utf8();
@@ -110,7 +106,7 @@ fn is_allowed_in_word(whole: &str, index: usize, char: char, prev_char: Option<c
 }
 
 fn is_word_allowed(word: &str) -> bool {
-    let lowercase = word.to_ascii_lowercase().replace('\'', "");
+    let lowercase = word.to_ascii_lowercase();
     TOP_10K_WORDS.contains(&lowercase[..])
         || (lowercase.ends_with('s') && TOP_10K_WORDS.contains(&lowercase[..lowercase.len() - 1]))
 }
