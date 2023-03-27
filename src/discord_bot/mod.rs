@@ -230,6 +230,9 @@ impl EventHandler for Handler {
         }
         let Some(content) = event.content else { return; };
         let Some(author) = event.author else { return; };
+        if author.bot {
+            return;
+        }
         tokio::runtime::Handle::current().spawn(async move {
             if let Err(err) = simple_words::on_message(
                 ctx,
