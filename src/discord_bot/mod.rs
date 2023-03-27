@@ -173,21 +173,19 @@ impl EventHandler for Handler {
             }
 
             let message_handling = {
-                let storage = GuildStorage::get(guild_id).await;
-                if storage
-                    .permanent_latest
-                    .is_permanent_latest_channel(new_message.channel_id)
-                {
-                    MessageHandling::PermanentLatest
+                if config::get().simple_words_channel == Some(new_message.channel_id) {
+                    MessageHandling::SimpleWords
                 } else {
-                    match new_message.content.strip_prefix(&storage.command_prefix) {
-                        Some(content) => MessageHandling::Command(content),
-                        None => {
-                            if config::get().simple_words_channel == Some(new_message.channel_id) {
-                                MessageHandling::SimpleWords
-                            } else {
-                                return;
-                            }
+                    let storage = GuildStorage::get(guild_id).await;
+                    if storage
+                        .permanent_latest
+                        .is_permanent_latest_channel(new_message.channel_id)
+                    {
+                        MessageHandling::PermanentLatest
+                    } else {
+                        match new_message.content.strip_prefix(&storage.command_prefix) {
+                            Some(content) => MessageHandling::Command(content),
+                            None => return,
                         }
                     }
                 }

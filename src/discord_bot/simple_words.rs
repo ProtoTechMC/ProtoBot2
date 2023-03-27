@@ -25,14 +25,14 @@ pub(crate) async fn on_message(
     // find words in message
     let mut error_message = None;
     if has_attachments {
-        error_message = Some("Message has an image".to_owned());
+        error_message = Some("Message has a picture".to_owned());
     } else {
         let mut illegal_words = Vec::new();
         let mut current_word_start = None;
         let mut prev_char = None;
         for (index, char) in content.char_indices() {
             if !char.is_ascii() && char != '’' {
-                error_message = Some("Message has a hard character".to_owned());
+                error_message = Some("Message has a hard letter".to_owned());
                 break;
             }
             if is_allowed_in_word(content, index, char, prev_char) {
