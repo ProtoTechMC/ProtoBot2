@@ -68,6 +68,19 @@ async fn run_normal(
         return Ok(());
     }
 
+    if message
+        .channel(&ctx)
+        .await?
+        .guild()
+        .and_then(|channel| channel.parent_id)
+        == Some(config::get().support_channel)
+    {
+        message
+            .reply(ctx.http, "This is already a support channel")
+            .await?;
+        return Ok(());
+    }
+
     referenced_message.reply_ping(&ctx.http, "Please read the message in the role reactions channel and react again. Questions should only go in the support channel").await?;
     ctx.http
         .remove_member_role(

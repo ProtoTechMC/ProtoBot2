@@ -27,6 +27,7 @@ pub struct Config {
     pub pterodactyl_smp_copy: String,
     pub panel_access_role: RoleId,
     pub channel_access_role: RoleId,
+    pub support_channel: ChannelId,
     #[serde(default)]
     pub simple_words_channel: Option<ChannelId>,
 }
