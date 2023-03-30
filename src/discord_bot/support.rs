@@ -149,8 +149,10 @@ async fn show_leaderboard(
 
     message
         .channel_id
-        .send_message(&ctx, |message| {
-            message.embed(|embed| embed.field("Send-to-support leaderboard:", embed_value, false))
+        .send_message(&ctx, |new_message| {
+            new_message
+                .embed(|embed| embed.field("Send-to-support leaderboard:", embed_value, false))
+                .reference_message(message)
         })
         .await?;
 
