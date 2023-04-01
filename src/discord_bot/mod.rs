@@ -157,9 +157,6 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, ctx: Context, new_message: Message) {
-        if new_message.author.bot {
-            return;
-        }
         let guild_id = match new_message.guild_id {
             Some(guild_id) => guild_id,
             None => return,
@@ -175,6 +172,8 @@ impl EventHandler for Handler {
             let message_handling = {
                 if config::get().simple_words_channel == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
+                } else if new_message.author.bot {
+                    return;
                 } else {
                     let storage = GuildStorage::get(guild_id).await;
                     if storage
@@ -230,9 +229,6 @@ impl EventHandler for Handler {
         }
         let Some(content) = event.content else { return; };
         let Some(author) = event.author else { return; };
-        if author.bot {
-            return;
-        }
         tokio::runtime::Handle::current().spawn(async move {
             if let Err(err) = simple_words::on_message(
                 ctx,

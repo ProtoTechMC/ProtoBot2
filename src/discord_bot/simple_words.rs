@@ -69,16 +69,18 @@ pub(crate) async fn on_message(
     }
     if let Some(error_message) = error_message {
         channel_id.delete_message(&ctx, message_id).await?;
-        let dm_channel = author.create_dm_channel(&ctx).await?;
-        dm_channel
-            .send_message(&ctx, |new_message| {
-                new_message.content(format!("{}! Your original message was:", error_message))
-            })
-            .await?;
-        if !content.is_empty() {
+        if !author.bot {
+            let dm_channel = author.create_dm_channel(&ctx).await?;
             dm_channel
-                .send_message(ctx, |new_message| new_message.content(content))
+                .send_message(&ctx, |new_message| {
+                    new_message.content(format!("{}! Your original message was:", error_message))
+                })
                 .await?;
+            if !content.is_empty() {
+                dm_channel
+                    .send_message(ctx, |new_message| new_message.content(content))
+                    .await?;
+            }
         }
     }
     Ok(())
