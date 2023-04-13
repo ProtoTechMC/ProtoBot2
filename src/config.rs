@@ -2,13 +2,20 @@ use lazy_static::lazy_static;
 use serde::Deserialize;
 use serenity::model::id::{ChannelId, GuildId, RoleId};
 use std::fs::File;
+use std::sync::{Arc, RwLock};
 
 lazy_static! {
-    static ref CONFIG: Config = Config::load().unwrap();
+    static ref CONFIG: RwLock<Arc<Config>> = RwLock::new(Arc::new(Config::load().unwrap()));
 }
 
-pub fn get() -> &'static Config {
-    &CONFIG
+pub fn get() -> Arc<Config> {
+    CONFIG.read().unwrap().clone()
+}
+
+pub(crate) fn reload() -> Result<(), crate::Error> {
+    let new_config = Config::load()?;
+    *CONFIG.write().unwrap() = Arc::new(new_config);
+    Ok(())
 }
 
 #[derive(Deserialize)]

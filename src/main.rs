@@ -1,7 +1,9 @@
 mod application;
 mod config;
 mod discord_bot;
+mod ptero_perms_sync;
 mod smp_commands;
+mod stdin;
 mod webserver;
 
 use flexi_logger::filter::{LogLineFilter, LogLineWriter};
@@ -132,10 +134,11 @@ fn main() {
         .and_then(|var| var.parse::<bool>().ok())
         != Some(true)
     {
-        for server_id in &config::get().pterodactyl_server_ids {
+        #[allow(clippy::unnecessary_to_owned)] // needed to move the strings to a different thread
+        for server_id in config::get().pterodactyl_server_ids.iter().cloned() {
             let protobot_data = protobot_data.clone();
             runtime.spawn(async move {
-                if let Err(err) = smp_commands::run(&server_id[..], protobot_data).await {
+                if let Err(err) = smp_commands::run(&server_id, protobot_data).await {
                     error!("websocket error for server id {}: {}", server_id, err);
                 }
             });
@@ -145,6 +148,15 @@ fn main() {
     runtime.spawn(async move {
         if let Err(err) = discord_bot::run(discord_bot).await {
             error!("discord bot error: {}", err);
+        }
+    });
+
+    runtime.spawn({
+        let protobot_data = protobot_data.clone();
+        async move {
+            if let Err(err) = stdin::handle_stdin_loop(protobot_data).await {
+                error!("stdin error: {}", err);
+            }
         }
     });
 
