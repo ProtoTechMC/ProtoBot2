@@ -31,7 +31,7 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
 
     let mut remaining_superadmins: HashSet<_> = config.panel_superadmin_emails.iter().collect();
     let mut remaining_admins: HashSet<_> = config.panel_admin_emails.iter().collect();
-    let mut remaining_panel_access: HashSet<_> = config.panel_admin_emails.iter().collect();
+    let mut remaining_panel_access: HashSet<_> = config.panel_access_emails.iter().collect();
     let ignored_emails: HashSet<_> = config.panel_ignore_emails.iter().collect();
 
     let superadmin_perms: HashSet<_> = config.panel_superadmin_perms.iter().collect();
