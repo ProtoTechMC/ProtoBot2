@@ -1,5 +1,5 @@
 use crate::{config, ProtobotData};
-use log::error;
+use log::{error, info};
 use std::collections::HashSet;
 
 pub(crate) async fn run(
@@ -17,10 +17,13 @@ pub(crate) async fn run(
         for server in &config.pterodactyl_server_ids {
             run_on_server(data, server).await?;
         }
-        Ok(())
     } else {
-        run_on_server(data, server).await
+        run_on_server(data, server).await?;
     }
+
+    info!("Successfully synced perms");
+
+    Ok(())
 }
 
 async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::Error> {
