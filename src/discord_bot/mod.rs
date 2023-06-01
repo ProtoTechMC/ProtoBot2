@@ -1,6 +1,7 @@
 mod brainfuck;
 mod chess;
 mod commands;
+mod counter;
 mod guild_storage;
 mod mood;
 mod permanent_latest;
@@ -165,6 +166,7 @@ impl EventHandler for Handler {
         tokio::runtime::Handle::current().spawn(async move {
             enum MessageHandling<'a> {
                 Command(&'a str),
+                IncCounter(&'a str),
                 PermanentLatest,
                 SimpleWords,
             }
@@ -184,7 +186,16 @@ impl EventHandler for Handler {
                     } else {
                         match new_message.content.strip_prefix(&storage.command_prefix) {
                             Some(content) => MessageHandling::Command(content),
-                            None => return,
+                            None => {
+                                if let Some(counter) = new_message.content.strip_prefix("++") {
+                                    MessageHandling::IncCounter(counter)
+                                } else if let Some(counter) = new_message.content.strip_suffix("++")
+                                {
+                                    MessageHandling::IncCounter(counter)
+                                } else {
+                                    return;
+                                }
+                            }
                         }
                     }
                 }
@@ -193,6 +204,9 @@ impl EventHandler for Handler {
             if let Err(err) = match message_handling {
                 MessageHandling::Command(command) => {
                     commands::run(command, guild_id, ctx, &new_message).await
+                }
+                MessageHandling::IncCounter(counter) => {
+                    counter::inc_counter(counter, guild_id, ctx, &new_message).await
                 }
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
