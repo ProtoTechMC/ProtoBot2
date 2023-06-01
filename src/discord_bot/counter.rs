@@ -1,5 +1,6 @@
 use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
+use log::info;
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::model::id::GuildId;
@@ -15,6 +16,11 @@ pub(crate) async fn inc_counter(
         storage.discard();
         return Ok(());
     };
+
+    info!(
+        "User {} (ID {}) incremented the counter \"{}\"",
+        message.author.name, message.author.id, counter
+    );
 
     let count = count.saturating_add(1);
     storage.counters.insert(counter.to_owned(), count);
