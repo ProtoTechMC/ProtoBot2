@@ -4,6 +4,7 @@ mod commands;
 mod counter;
 mod guild_storage;
 mod mood;
+mod octal_counter;
 mod permanent_latest;
 mod reaction_role_toggle;
 mod role;
@@ -167,12 +168,15 @@ impl EventHandler for Handler {
             enum MessageHandling<'a> {
                 Command(&'a str),
                 IncCounter(&'a str),
+                OctalCounter,
                 PermanentLatest,
                 SimpleWords,
             }
 
             let message_handling = {
-                if config::get().simple_words_channel == Some(new_message.channel_id) {
+                if config::get().octal_counter_channel == Some(new_message.channel_id) {
+                    MessageHandling::OctalCounter
+                } else if config::get().simple_words_channel == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
                 } else if new_message.author.bot {
                     return;
@@ -208,6 +212,17 @@ impl EventHandler for Handler {
                 MessageHandling::IncCounter(counter) => {
                     counter::inc_counter(counter, guild_id, ctx, &new_message).await
                 }
+                MessageHandling::OctalCounter => {
+                    octal_counter::on_message(
+                        ctx,
+                        !new_message.attachments.is_empty(),
+                        &new_message.content,
+                        &new_message.author,
+                        new_message.channel_id,
+                        new_message.id,
+                    )
+                    .await
+                }
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
                 }
@@ -238,32 +253,41 @@ impl EventHandler for Handler {
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
-        if config::get().simple_words_channel != Some(event.channel_id) {
-            return;
+        if config::get().simple_words_channel == Some(event.channel_id) {
+            let Some(content) = event.content else { return; };
+            let Some(author) = event.author else { return; };
+            tokio::runtime::Handle::current().spawn(async move {
+                if let Err(err) = simple_words::on_message(
+                    ctx,
+                    event
+                        .attachments
+                        .as_ref()
+                        .map(|attachments| attachments.is_empty())
+                        == Some(false),
+                    &content,
+                    &author,
+                    event.channel_id,
+                    event.id,
+                )
+                    .await
+                {
+                    warn!(
+                        "Error processing message edit from \"{}\" (ID {}): {}",
+                        author.name, author.id, err
+                    );
+                }
+            });
+        } else if config::get().octal_counter_channel == Some(event.channel_id) {
+            let Some(author) = event.author else { return; };
+            tokio::runtime::Handle::current().spawn(async move {
+                if let Err(err) = event.channel_id.delete_message(&ctx, event.id).await {
+                    warn!(
+                        "Error processing message edit from \"{}\" (ID {}): {}",
+                        author.name, author.id, err
+                    );
+                }
+            });
         }
-        let Some(content) = event.content else { return; };
-        let Some(author) = event.author else { return; };
-        tokio::runtime::Handle::current().spawn(async move {
-            if let Err(err) = simple_words::on_message(
-                ctx,
-                event
-                    .attachments
-                    .as_ref()
-                    .map(|attachments| attachments.is_empty())
-                    == Some(false),
-                &content,
-                &author,
-                event.channel_id,
-                event.id,
-            )
-            .await
-            {
-                warn!(
-                    "Error processing message edit from \"{}\" (ID {}): {}",
-                    author.name, author.id, err
-                );
-            }
-        });
     }
 
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {

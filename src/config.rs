@@ -27,6 +27,7 @@ pub struct Config {
     pub use_https: bool,
     pub application_channel: ChannelId,
     pub application_token: String,
+    pub octal_counter_channel: Option<ChannelId>,
     pub pterodactyl_domain: String,
     pub pterodactyl_server_ids: Vec<String>,
     pub pterodactyl_api_key: String,
