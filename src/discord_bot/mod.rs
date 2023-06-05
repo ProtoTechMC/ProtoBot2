@@ -214,6 +214,7 @@ impl EventHandler for Handler {
                 }
                 MessageHandling::OctalCounter => {
                     octal_counter::on_message(
+                        guild_id,
                         ctx,
                         !new_message.attachments.is_empty(),
                         &new_message.content,
@@ -269,7 +270,7 @@ impl EventHandler for Handler {
                     event.channel_id,
                     event.id,
                 )
-                    .await
+                .await
                 {
                     warn!(
                         "Error processing message edit from \"{}\" (ID {}): {}",

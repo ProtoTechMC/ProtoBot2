@@ -44,6 +44,10 @@ pub struct GuildStorage {
     pub users_sent_to_support: HashSet<UserId>,
     #[serde(default)]
     pub counters: HashMap<String, u64>,
+    #[serde(default)]
+    pub octal_counter: i32,
+    #[serde(default)]
+    pub octal_counter_latest_user: Option<UserId>
 }
 
 impl Default for GuildStorage {
@@ -61,6 +65,8 @@ impl Default for GuildStorage {
             send_to_support_leaderboard: HashMap::new(),
             users_sent_to_support: HashSet::new(),
             counters: HashMap::new(),
+            octal_counter: 0,
+            octal_counter_latest_user: None
         }
     }
 }
