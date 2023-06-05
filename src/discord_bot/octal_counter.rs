@@ -33,6 +33,7 @@ pub(crate) async fn on_message(
     }
 
     storage.octal_counter = next_counter;
+    storage.octal_counter_latest_user = Some(author.id);
     storage.save().await;
     Ok(())
 }
