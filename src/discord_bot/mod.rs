@@ -174,7 +174,7 @@ impl EventHandler for Handler {
             }
 
             let message_handling = {
-                if config::get().octal_counter_channel == Some(new_message.channel_id) {
+                if GuildStorage::get(guild_id).await.octal_counter_channel == Some(new_message.channel_id) {
                     MessageHandling::OctalCounter
                 } else if config::get().simple_words_channel == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
@@ -278,7 +278,7 @@ impl EventHandler for Handler {
                     );
                 }
             });
-        } else if config::get().octal_counter_channel == Some(event.channel_id) {
+        } else if GuildStorage::get(match event.guild_id { Some(i) => i, None => return }).await.octal_counter_channel == Some(event.channel_id) {
             let Some(author) = event.author else { return; };
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(err) = event.channel_id.delete_message(&ctx, event.id).await {
