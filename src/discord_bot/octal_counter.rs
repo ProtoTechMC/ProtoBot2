@@ -25,13 +25,13 @@ pub(crate) async fn on_message(
 
     let mut storage = GuildStorage::get_mut(guild_id).await;
     if storage.octal_counter_state.octal_counter_latest_user == Some(author.id)  {
-        channel_id.delete_message(&ctx, message_id).await?;
         storage.discard();
+        channel_id.delete_message(&ctx, message_id).await?;
         return Ok(());
     }
     if next_counter != storage.octal_counter_state.octal_counter + 1 {
-        channel_id.delete_message(&ctx, message_id).await?;
         storage.discard();
+        channel_id.delete_message(&ctx, message_id).await?;
         return Ok(());
     }
 
