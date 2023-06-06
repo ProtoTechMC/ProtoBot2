@@ -1,4 +1,5 @@
 use crate::discord_bot::chess::ChessState;
+use crate::discord_bot::octal_counter::OctalCounterState;
 use crate::discord_bot::permanent_latest::PermanentLatestInfo;
 use crate::discord_bot::role::RoleData;
 use crate::discord_bot::roletoggle::RoleToggleInfo;
@@ -45,11 +46,7 @@ pub struct GuildStorage {
     #[serde(default)]
     pub counters: HashMap<String, u64>,
     #[serde(default)]
-    pub octal_counter_channel: Option<ChannelId>,
-    #[serde(default)]
-    pub octal_counter: i32,
-    #[serde(default)]
-    pub octal_counter_latest_user: Option<UserId>,
+    pub octal_counter_state: OctalCounterState,
 }
 
 impl Default for GuildStorage {
@@ -67,9 +64,7 @@ impl Default for GuildStorage {
             send_to_support_leaderboard: HashMap::new(),
             users_sent_to_support: HashSet::new(),
             counters: HashMap::new(),
-            octal_counter_channel: None,
-            octal_counter: 0,
-            octal_counter_latest_user: None,
+            octal_counter_state: OctalCounterState::default(),
         }
     }
 }
