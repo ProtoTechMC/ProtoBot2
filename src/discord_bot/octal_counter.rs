@@ -1,8 +1,8 @@
+use crate::discord_bot::guild_storage::GuildStorage;
 use serde::{Deserialize, Serialize};
 use serenity::client::Context;
 use serenity::model::id::{ChannelId, GuildId, MessageId, UserId};
 use serenity::model::user::User;
-use crate::discord_bot::guild_storage::GuildStorage;
 
 pub(crate) async fn on_message(
     guild_id: GuildId,
@@ -24,7 +24,7 @@ pub(crate) async fn on_message(
     };
 
     let mut storage = GuildStorage::get_mut(guild_id).await;
-    if storage.octal_counter_state.octal_counter_latest_user == Some(author.id)  {
+    if storage.octal_counter_state.octal_counter_latest_user == Some(author.id) {
         storage.discard();
         channel_id.delete_message(&ctx, message_id).await?;
         return Ok(());
