@@ -44,7 +44,7 @@ async fn run_normal(
     }
 
     let Some(referenced_message) = &message.referenced_message else {
-        message.reply(ctx.http, "You need to reply to a message").await?;
+        message.reply(ctx.http, "You need to reply to a message. Did you mean \"$support leaderboard\"?").await?;
         return Ok(());
     };
 
