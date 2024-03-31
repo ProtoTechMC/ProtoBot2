@@ -6,7 +6,7 @@ use serenity::model::user::User;
 
 fn is_valid_js(text: &str) -> bool {
     std::panic::catch_unwind(|| {
-        parse_module(text, 0)
+        !parse_module(text, 0)
             .errors()
             .iter()
             .any(|err| err.severity == Severity::Error)
