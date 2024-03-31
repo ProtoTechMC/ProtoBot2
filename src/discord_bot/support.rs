@@ -27,7 +27,9 @@ async fn run_normal(
     ctx: Context,
     message: &Message,
 ) -> Result<(), crate::Error> {
-    let Some(member) = &message.member else { return Ok(()) };
+    let Some(member) = &message.member else {
+        return Ok(());
+    };
     let now = Timestamp::now();
     if member
         .joined_at
@@ -44,7 +46,9 @@ async fn run_normal(
     }
 
     let Some(referenced_message) = &message.referenced_message else {
-        message.reply(ctx.http, "You need to reply to a message").await?;
+        message
+            .reply(ctx.http, "You need to reply to a message")
+            .await?;
         return Ok(());
     };
 

@@ -3,6 +3,7 @@ mod chess;
 mod commands;
 mod counter;
 mod guild_storage;
+mod js_messages;
 mod mood;
 mod permanent_latest;
 mod reaction_role_toggle;
@@ -169,11 +170,14 @@ impl EventHandler for Handler {
                 IncCounter(&'a str),
                 PermanentLatest,
                 SimpleWords,
+                JsChannel,
             }
 
             let message_handling = {
                 if config::get().simple_words_channel == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
+                } else if config::get().js_channel == Some(new_message.channel_id) {
+                    MessageHandling::JsChannel
                 } else if new_message.author.bot {
                     return;
                 } else {
@@ -211,6 +215,17 @@ impl EventHandler for Handler {
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
                 }
+                MessageHandling::JsChannel => {
+                    js_messages::on_message(
+                        ctx,
+                        !new_message.attachments.is_empty(),
+                        &new_message.content,
+                        &new_message.author,
+                        new_message.channel_id,
+                        new_message.id,
+                    )
+                    .await
+                }
                 MessageHandling::SimpleWords => {
                     simple_words::on_message(
                         ctx,
@@ -238,26 +253,56 @@ impl EventHandler for Handler {
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
-        if config::get().simple_words_channel != Some(event.channel_id) {
-            return;
+        enum MessageEditHandling {
+            SimpleWords,
+            JsMessage,
         }
-        let Some(content) = event.content else { return; };
-        let Some(author) = event.author else { return; };
+        let handling = if config::get().simple_words_channel == Some(event.channel_id) {
+            MessageEditHandling::SimpleWords
+        } else if config::get().js_channel == Some(event.channel_id) {
+            MessageEditHandling::JsMessage
+        } else {
+            return;
+        };
+        let Some(content) = event.content else {
+            return;
+        };
+        let Some(author) = event.author else {
+            return;
+        };
         tokio::runtime::Handle::current().spawn(async move {
-            if let Err(err) = simple_words::on_message(
-                ctx,
-                event
-                    .attachments
-                    .as_ref()
-                    .map(|attachments| attachments.is_empty())
-                    == Some(false),
-                &content,
-                &author,
-                event.channel_id,
-                event.id,
-            )
-            .await
-            {
+            if let Err(err) = match handling {
+                MessageEditHandling::SimpleWords => {
+                    simple_words::on_message(
+                        ctx,
+                        event
+                            .attachments
+                            .as_ref()
+                            .map(|attachments| attachments.is_empty())
+                            == Some(false),
+                        &content,
+                        &author,
+                        event.channel_id,
+                        event.id,
+                    )
+                    .await
+                }
+                MessageEditHandling::JsMessage => {
+                    js_messages::on_message(
+                        ctx,
+                        event
+                            .attachments
+                            .as_ref()
+                            .map(|attachments| attachments.is_empty())
+                            == Some(false),
+                        &content,
+                        &author,
+                        event.channel_id,
+                        event.id,
+                    )
+                    .await
+                }
+            } {
                 warn!(
                     "Error processing message edit from \"{}\" (ID {}): {}",
                     author.name, author.id, err

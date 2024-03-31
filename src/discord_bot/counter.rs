@@ -100,7 +100,9 @@ async fn add_counter(
     }
 
     let Some(counter) = args.next() else {
-        message.reply(ctx, "Need to specify the name of the counter").await?;
+        message
+            .reply(ctx, "Need to specify the name of the counter")
+            .await?;
         return Ok(());
     };
 
@@ -134,7 +136,9 @@ async fn remove_counter(
     }
 
     let Some(counter) = args.next() else {
-        message.reply(ctx, "Need to specify the name of the counter").await?;
+        message
+            .reply(ctx, "Need to specify the name of the counter")
+            .await?;
         return Ok(());
     };
 
@@ -165,12 +169,16 @@ async fn set_counter(
     }
 
     let Some(counter) = args.next() else {
-        message.reply(ctx, "Need to specify the name of the counter").await?;
+        message
+            .reply(ctx, "Need to specify the name of the counter")
+            .await?;
         return Ok(());
     };
 
     let Some(count) = args.next().and_then(|count| count.parse().ok()) else {
-        message.reply(ctx, "Need to specify a valid count for the counter").await?;
+        message
+            .reply(ctx, "Need to specify a valid count for the counter")
+            .await?;
         return Ok(());
     };
 
@@ -200,7 +208,9 @@ async fn get_counter(
     mut args: impl Iterator<Item = &str>,
 ) -> Result<(), crate::Error> {
     let Some(counter) = args.next() else {
-        message.reply(ctx, "Need to specify the name of the counter").await?;
+        message
+            .reply(ctx, "Need to specify the name of the counter")
+            .await?;
         return Ok(());
     };
 
