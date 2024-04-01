@@ -1,15 +1,39 @@
 use rslint_errors::Severity;
-use rslint_parser::parse_module;
+use rslint_parser::{parse_module, SyntaxKind};
 use serenity::client::Context;
 use serenity::model::id::{ChannelId, MessageId};
 use serenity::model::user::User;
 
 fn is_valid_js(text: &str) -> bool {
     std::panic::catch_unwind(|| {
-        !parse_module(text, 0)
+        let parsed_module = parse_module(text, 0);
+        if parsed_module
             .errors()
             .iter()
             .any(|err| err.severity == Severity::Error)
+        {
+            return false;
+        }
+
+        let Some(first_child) = parsed_module.syntax().first_child() else {
+            return false;
+        };
+
+        match first_child.kind() {
+            SyntaxKind::STRING | SyntaxKind::REGEX | SyntaxKind::IDENT => return false,
+            SyntaxKind::EXPR_STMT => match first_child
+                .first_child()
+                .map(|grandchild| grandchild.kind())
+            {
+                Some(SyntaxKind::STRING) | Some(SyntaxKind::REGEX | SyntaxKind::IDENT) => {
+                    return false
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        true
     })
     .unwrap_or(false)
 }
