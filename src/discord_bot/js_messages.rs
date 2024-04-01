@@ -23,9 +23,9 @@ fn is_valid_js(text: &str) -> bool {
             SyntaxKind::LITERAL | SyntaxKind::REGEX | SyntaxKind::IDENT | SyntaxKind::TEMPLATE => {
                 return false
             }
-            SyntaxKind::EXPR_STMT => match dbg!(first_child
+            SyntaxKind::EXPR_STMT => match first_child
                 .first_child()
-                .map(|grandchild| grandchild.kind()))
+                .map(|grandchild| grandchild.kind())
             {
                 Some(SyntaxKind::LITERAL)
                 | Some(SyntaxKind::REGEX)
