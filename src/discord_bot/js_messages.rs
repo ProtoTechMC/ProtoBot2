@@ -20,14 +20,17 @@ fn is_valid_js(text: &str) -> bool {
         };
 
         match first_child.kind() {
-            SyntaxKind::STRING | SyntaxKind::REGEX | SyntaxKind::IDENT | SyntaxKind::TEMPLATE => return false,
-            SyntaxKind::EXPR_STMT => match first_child
+            SyntaxKind::LITERAL | SyntaxKind::REGEX | SyntaxKind::IDENT | SyntaxKind::TEMPLATE => {
+                return false
+            }
+            SyntaxKind::EXPR_STMT => match dbg!(first_child
                 .first_child()
-                .map(|grandchild| grandchild.kind())
+                .map(|grandchild| grandchild.kind()))
             {
-                Some(SyntaxKind::STRING) | Some(SyntaxKind::REGEX | SyntaxKind::IDENT | SyntaxKind::TEMPLATE) => {
-                    return false
-                }
+                Some(SyntaxKind::LITERAL)
+                | Some(SyntaxKind::REGEX)
+                | Some(SyntaxKind::IDENT)
+                | Some(SyntaxKind::TEMPLATE) => return false,
                 _ => {}
             },
             _ => {}
