@@ -62,7 +62,7 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
                 server
                     .set_user_permissions(
                         existing_user.uuid,
-                        config.panel_access_ptero_perms.clone(),
+                        panel_access_perms.iter().collect(),
                     )
                     .await?;
             }
@@ -83,7 +83,7 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
     }
     for user in remaining_panel_access {
         server
-            .add_user(user, config.panel_access_ptero_perms.clone())
+            .add_user(user, panel_access_perms.iter().collect())
             .await?;
     }
 
