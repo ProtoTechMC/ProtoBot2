@@ -60,10 +60,7 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
         } else if remaining_panel_access.remove(&existing_user.email) {
             if existing_user.permissions.iter().collect::<HashSet<_>>() != panel_access_perms {
                 server
-                    .set_user_permissions(
-                        existing_user.uuid,
-                        panel_access_perms.iter().collect(),
-                    )
+                    .set_user_permissions(existing_user.uuid, panel_access_perms.iter().collect())
                     .await?;
             }
         } else if !ignored_emails.contains(&existing_user.email) {

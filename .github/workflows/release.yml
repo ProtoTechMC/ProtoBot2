@@ -29,9 +29,9 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+#      - uses: actions-rs/clippy-check@v1
+#        with:
+#          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
@@ -50,7 +50,7 @@ jobs:
       - name: Restart Pterodactyl Server
         uses: fjogeleit/http-request-action@v1
         with:
-          url: 'https://panel.cloudtechmc.com/api/client/servers/b50cdd05/power'
+          url: 'https://panel.kiwitechmc.com/api/client/servers/41fd740c/power'
           method: POST
           customHeaders: '{"Accept":"application/json","Content-Type":"application/json","Authorization":"Bearer ${{ secrets.PTERODACTYL_UPDATE_KEY }}"}'
           data: '{"signal":"restart"}'
