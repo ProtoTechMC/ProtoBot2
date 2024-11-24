@@ -3,7 +3,7 @@ use linkify::{LinkFinder, LinkKind};
 use log::warn;
 use scraper::Html;
 use serde::Deserialize;
-use serde_json::json;
+use serenity::builder::{CreateEmbed, CreateEmbedAuthor, CreateMessage};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 
@@ -19,10 +19,11 @@ pub(crate) async fn handle_application(
         let url = embeds.url.clone();
         config::get()
             .application_channel
-            .send_message(&data.discord_handle, move |message| {
-                message.embed(move |discord_embed| {
-                    discord_embed
-                        .author(move |author| author.name(embed.author))
+            .send_message(
+                &data.discord_handle,
+                CreateMessage::new().embed({
+                    let mut discord_embed = CreateEmbed::new()
+                        .author(CreateEmbedAuthor::new(embed.author))
                         .title(embed.title)
                         .description(embed.description)
                         .fields(
@@ -32,42 +33,41 @@ pub(crate) async fn handle_application(
                                 .map(|field| (field.title, field.value, false)),
                         );
                     if url.len() <= EMBED_URL_LIMIT {
-                        discord_embed.url(url);
+                        discord_embed = discord_embed.url(url);
                     }
                     discord_embed
-                });
-                message
-            })
+                }),
+            )
             .await?;
     }
 
     for attachment in attachments {
         config::get()
             .application_channel
-            .send_message(&data.discord_handle, move |message| {
-                message.embed(move |discord_embed| {
+            .send_message(
+                &data.discord_handle,
+                CreateMessage::new().embed({
+                    let mut discord_embed = CreateEmbed::new();
                     match attachment.typ {
                         AttachmentType::Image => {
-                            discord_embed.image(attachment.url);
+                            discord_embed = discord_embed.image(attachment.url);
                         }
                         AttachmentType::Video => {
-                            discord_embed
-                                .0
-                                .insert("video", json!({"url": attachment.url}));
+                            // discord can't attach videos: https://github.com/serenity-rs/serenity/issues/2354
                         }
                     }
                     if let Some(link) = attachment.link {
-                        discord_embed.url(link);
+                        discord_embed = discord_embed.url(link);
                     }
                     if let Some(title) = attachment.title {
-                        discord_embed.title(title);
+                        discord_embed = discord_embed.title(title);
                     }
                     if let Some(description) = attachment.description {
-                        discord_embed.description(description);
+                        discord_embed = discord_embed.description(description);
                     }
                     discord_embed
-                })
-            })
+                }),
+            )
             .await?;
     }
 

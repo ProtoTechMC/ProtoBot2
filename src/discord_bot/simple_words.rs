@@ -1,17 +1,19 @@
-use lazy_static::lazy_static;
+use serenity::builder::CreateMessage;
 use serenity::client::Context;
 use serenity::model::id::{ChannelId, MessageId};
 use serenity::model::user::User;
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
-lazy_static! {
-    static ref TOP_10K_WORDS: HashSet<&'static str> = {
+static TOP_10K_WORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+fn top_10k_words() -> &'static HashSet<&'static str> {
+    TOP_10K_WORDS.get_or_init(|| {
         let mut set = HashSet::with_capacity(5000);
         for word in include!("simple_writer_words.txt") {
             set.insert(word);
         }
         set
-    };
+    })
 }
 
 pub(crate) async fn on_message(
@@ -72,13 +74,15 @@ pub(crate) async fn on_message(
         if !author.bot {
             let dm_channel = author.create_dm_channel(&ctx).await?;
             dm_channel
-                .send_message(&ctx, |new_message| {
-                    new_message.content(format!("{}! Your original message was:", error_message))
-                })
+                .send_message(
+                    &ctx,
+                    CreateMessage::new()
+                        .content(format!("{}! Your original message was:", error_message)),
+                )
                 .await?;
             if !content.is_empty() {
                 dm_channel
-                    .send_message(ctx, |new_message| new_message.content(content))
+                    .send_message(ctx, CreateMessage::new().content(content))
                     .await?;
             }
         }
@@ -109,6 +113,6 @@ fn is_allowed_in_word(whole: &str, index: usize, char: char, prev_char: Option<c
 
 fn is_word_allowed(word: &str) -> bool {
     let lowercase = word.to_ascii_lowercase();
-    TOP_10K_WORDS.contains(&lowercase[..])
-        || (lowercase.ends_with('s') && TOP_10K_WORDS.contains(&lowercase[..lowercase.len() - 1]))
+    top_10k_words().contains(&lowercase[..])
+        || (lowercase.ends_with('s') && top_10k_words().contains(&lowercase[..lowercase.len() - 1]))
 }

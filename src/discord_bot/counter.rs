@@ -1,6 +1,7 @@
 use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use log::info;
+use serenity::builder::{CreateEmbed, CreateMessage};
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::model::id::GuildId;
@@ -71,19 +72,20 @@ async fn list_counters(
     counters.sort();
     message
         .channel_id
-        .send_message(ctx, |new_message| {
-            new_message
-                .embed(|embed| {
-                    embed.description(
+        .send_message(
+            ctx,
+            CreateMessage::new()
+                .embed(
+                    CreateEmbed::new().description(
                         counters
                             .into_iter()
                             .map(|counter| format!("• {counter}"))
                             .collect::<Vec<_>>()
                             .join("\n"),
-                    )
-                })
-                .reference_message(message)
-        })
+                    ),
+                )
+                .reference_message(message),
+        )
         .await?;
 
     Ok(())

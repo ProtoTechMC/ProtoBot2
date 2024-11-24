@@ -1,20 +1,21 @@
-use lazy_static::lazy_static;
 use serde::Deserialize;
 use serenity::model::id::{ChannelId, GuildId, RoleId};
 use std::fs::File;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
-lazy_static! {
-    static ref CONFIG: RwLock<Arc<Config>> = RwLock::new(Arc::new(Config::load().unwrap()));
+static CONFIG: OnceLock<RwLock<Arc<Config>>> = OnceLock::new();
+
+fn writable_config() -> &'static RwLock<Arc<Config>> {
+    CONFIG.get_or_init(|| RwLock::new(Arc::new(Config::load().unwrap())))
 }
 
 pub fn get() -> Arc<Config> {
-    CONFIG.read().unwrap().clone()
+    writable_config().read().unwrap().clone()
 }
 
 pub(crate) fn reload() -> Result<(), crate::Error> {
     let new_config = Config::load()?;
-    *CONFIG.write().unwrap() = Arc::new(new_config);
+    *writable_config().write().unwrap() = Arc::new(new_config);
     Ok(())
 }
 
@@ -23,8 +24,6 @@ pub struct Config {
     pub discord_token: String,
     pub guild_id: GuildId,
     pub listen_ip: String,
-    #[serde(default)]
-    pub use_https: bool,
     pub application_channel: ChannelId,
     pub application_token: String,
     pub pterodactyl_domain: String,

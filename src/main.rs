@@ -12,10 +12,9 @@ use flexi_logger::{
 };
 use git_version::git_version;
 use hyper::http;
-use lazy_static::lazy_static;
 use log::{error, info, Level, Record};
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::{env, io};
 use tokio::sync::Notify;
 
@@ -51,15 +50,17 @@ pub struct ProtobotData {
     pub pterodactyl: Arc<pterodactyl_api::client::Client>,
 }
 
-lazy_static! {
-    static ref SHUTDOWN: Notify = Notify::new();
+static SHUTDOWN_NOTIFY: OnceLock<Notify> = OnceLock::new();
+fn shutdown_notify() -> &'static Notify {
+    SHUTDOWN_NOTIFY.get_or_init(Notify::new)
 }
+
 pub fn shutdown() {
-    SHUTDOWN.notify_waiters();
+    shutdown_notify().notify_waiters();
 }
 
 pub fn is_shutdown() -> impl Future<Output = ()> {
-    SHUTDOWN.notified()
+    shutdown_notify().notified()
 }
 
 fn main() {
@@ -125,7 +126,7 @@ fn main() {
     };
 
     let protobot_data = ProtobotData {
-        discord_handle: discord_bot.cache_and_http.http.clone(),
+        discord_handle: discord_bot.http.clone(),
         pterodactyl,
     };
 

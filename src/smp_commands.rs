@@ -1,5 +1,4 @@
 use crate::ProtobotData;
-use async_trait::async_trait;
 use log::{error, info};
 use nom::bytes::complete::{tag, take_until1};
 use nom::character::complete::{anychar, char, digit1};
@@ -143,7 +142,6 @@ struct WebsocketListener<'a> {
     server: pterodactyl_api::client::Server<'a>,
 }
 
-#[async_trait]
 impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_> {
     async fn on_console_output(
         &mut self,

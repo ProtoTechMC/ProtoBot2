@@ -1,5 +1,6 @@
 use rslint_errors::Severity;
 use rslint_parser::{parse_module, SyntaxKind};
+use serenity::builder::CreateMessage;
 use serenity::client::Context;
 use serenity::model::id::{ChannelId, MessageId};
 use serenity::model::user::User;
@@ -62,13 +63,15 @@ pub(crate) async fn on_message(
         if !author.bot {
             let dm_channel = author.create_dm_channel(&ctx).await?;
             dm_channel
-                .send_message(&ctx, |new_message| {
-                    new_message.content(format!("{error_message}! Your original message was:"))
-                })
+                .send_message(
+                    &ctx,
+                    CreateMessage::new()
+                        .content(format!("{error_message}! Your original message was:")),
+                )
                 .await?;
             if !content.is_empty() {
                 dm_channel
-                    .send_message(ctx, |new_message| new_message.content(content))
+                    .send_message(ctx, CreateMessage::new().content(content))
                     .await?;
             }
         }

@@ -18,10 +18,13 @@ use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use log::{error, info, warn};
+use serenity::builder::{
+    CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    EditInteractionResponse,
+};
 use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
-use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-use serenity::model::application::interaction::{Interaction, InteractionResponseType};
+use serenity::model::application::{CommandInteraction, Interaction};
 use serenity::model::channel::{Message, Reaction};
 use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
@@ -40,17 +43,13 @@ struct Handler {
 
 async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<()> {
     guild_id
-        .set_application_commands(&ctx.http, |commands| {
-            commands
-                .create_application_command(|command| {
-                    command.name("hello").description("A test command")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("update_copy")
-                        .description("Updates the SMP copy")
-                })
-        })
+        .set_commands(
+            &ctx.http,
+            vec![
+                CreateCommand::new("hello").description("A test command"),
+                CreateCommand::new("update_copy").description("Updates the SMP copy"),
+            ],
+        )
         .await?;
     Ok(())
 }
@@ -58,17 +57,18 @@ async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<(
 #[allow(clippy::single_match)]
 async fn process_command(
     ctx: &Context,
-    command: ApplicationCommandInteraction,
+    command: CommandInteraction,
     pterodactyl: &pterodactyl_api::client::Client,
 ) -> serenity::Result<()> {
     match &command.data.name[..] {
         "hello" => {
             command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content("Hello World!"))
-                })
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new().content("Hello World!"),
+                    ),
+                )
                 .await?;
         }
         "update_copy" => {
@@ -79,30 +79,33 @@ async fn process_command(
                 != Some(true)
             {
                 command
-                    .create_interaction_response(&ctx.http, |response| {
-                        response
-                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                            .interaction_response_data(|message| {
-                                message.content("You do not have permission to use that command")
-                            })
-                    })
+                    .create_response(
+                        &ctx.http,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("You do not have permission to use that command"),
+                        ),
+                    )
                     .await?;
                 return Ok(());
             }
             command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content("Updating copy..."))
-                })
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new().content("Updating copy..."),
+                    ),
+                )
                 .await?;
             match update_copy::run(ctx, &command, pterodactyl).await {
                 Err(crate::Error::Serenity(err)) => return Err(err),
                 Err(err) => {
                     command
-                        .edit_original_interaction_response(&ctx.http, |message| {
-                            message.content(format!("Error updating copy: {}", err))
-                        })
+                        .edit_response(
+                            &ctx.http,
+                            EditInteractionResponse::new()
+                                .content(format!("Error updating copy: {}", err)),
+                        )
                         .await?;
                 }
                 Ok(()) => {}
@@ -121,12 +124,13 @@ impl EventHandler for Handler {
             .join_log_channel
         {
             if let Err(err) = join_log_channel
-                .send_message(ctx, |message| {
-                    message.content(format!(
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!(
                         "{} has risen from the dead.",
                         new_member.display_name()
-                    ))
-                })
+                    )),
+                )
                 .await
             {
                 error!("Failed to send message in join log channel: {}", err);
@@ -143,14 +147,15 @@ impl EventHandler for Handler {
     ) {
         if let Some(join_log_channel) = GuildStorage::get(guild_id).await.join_log_channel {
             if let Err(err) = join_log_channel
-                .send_message(ctx, move |message| {
-                    message.content(format!(
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!(
                         "{} has been abducted by alien forces.",
                         member_data_if_available
-                            .map(|member| member.display_name().into_owned())
+                            .map(|member| member.display_name().to_owned())
                             .unwrap_or(user.name)
-                    ))
-                })
+                    )),
+                )
                 .await
             {
                 error!("Failed to send message in join log channel: {}", err);
@@ -329,7 +334,7 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
+        if let Interaction::Command(command) = interaction {
             let pterodactyl = self.pterodactyl.clone();
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(err) = process_command(&ctx, command, &pterodactyl).await {
