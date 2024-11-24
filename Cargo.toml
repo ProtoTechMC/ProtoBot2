@@ -12,7 +12,7 @@ flexi_logger = { version = "0.29", default-features = false, features = ["compre
 futures = "0.3"
 git-version = "0.3"
 http-body-util = "0.1"
-hyper = { version = "1.5", features = ["http1", "http2", "server"] }
+hyper = { version = "1.5", features = ["http1", "server"] }
 hyper-util = "0.1"
 linkify = "0.10"
 log = "0.4"

@@ -2,10 +2,10 @@ use crate::application::handle_application;
 use crate::{config, ProtobotData};
 use http_body_util::{BodyExt, Full};
 use hyper::body::{Bytes, Incoming};
-use hyper::server::conn::http2;
+use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
-use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::rt::TokioIo;
 use log::{info, warn};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -79,7 +79,7 @@ pub(crate) async fn run(data: ProtobotData) -> Result<(), crate::Error> {
                 let io = TokioIo::new(stream);
                 tokio::task::spawn(async move {
                     let data = data.clone();
-                    if let Err(err) = http2::Builder::new(TokioExecutor::new())
+                    if let Err(err) = http1::Builder::new()
                         .serve_connection(io, {
                         service_fn(move |req| {
                             let data = data.clone();
