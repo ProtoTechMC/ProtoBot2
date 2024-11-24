@@ -103,6 +103,10 @@ fn main() {
         .expect("Failed to initialize logger");
     log_panics::init();
 
+    if let Err(err) = ctrlc::set_handler(shutdown) {
+        error!("Could not set Ctrl-C handler: {}", err);
+    }
+
     info!("Starting protobot {}", git_version!());
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
