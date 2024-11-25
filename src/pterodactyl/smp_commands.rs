@@ -124,6 +124,26 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
     Ok(())
 }
 
+async fn handle_log_message(
+    data: &ProtobotData,
+    chat_bridge_webhook: Option<&Webhook>,
+    message: &str,
+) -> Result<(), crate::Error> {
+    if let Some(chat_bridge_webhook) = chat_bridge_webhook {
+        if message.ends_with(" joined the game") || message.ends_with(" left the game") {
+            chat_bridge_webhook
+                .execute(
+                    &data.discord_handle,
+                    false,
+                    ExecuteWebhook::new().content(message).username("System"),
+                )
+                .await?;
+        }
+    }
+
+    Ok(())
+}
+
 async fn handle_server_log<H: PteroWebSocketHandle>(
     handle: &mut H,
     data: &ProtobotData,
@@ -159,6 +179,27 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
             message,
         )
         .await?;
+        return Ok(());
+    }
+
+    let parse_result: Result<(&str, &str), nom::error::Error<&str>> = map(
+        tuple((
+            tuple((
+                char('['),
+                digit1,
+                char(':'),
+                digit1,
+                char(':'),
+                digit1,
+                tag("] [Server thread/INFO]: "),
+            )),
+            recognize(many1(anychar)),
+        )),
+        |(_, log_message)| log_message,
+    )(message)
+    .finish();
+    if let Ok((_, log_message)) = parse_result {
+        handle_log_message(data, chat_bridge_webhook, log_message).await?;
     }
 
     Ok(())
