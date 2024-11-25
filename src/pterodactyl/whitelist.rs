@@ -155,7 +155,7 @@ async fn whitelist_add(
         format!("Whitelisted {player_name} on {server}")
     })
     .await?;
-    if category != PterodactylServerCategory::Smp {
+    if category.should_be_opped() {
         run_command(data, format!("op {player_name}"), category, |server| {
             format!("Opped {player_name} on {server}")
         })
@@ -191,7 +191,7 @@ async fn whitelist_remove(
         format!("Unwhitelisted {player_name} on {server}")
     })
     .await?;
-    if category != PterodactylServerCategory::Smp {
+    if category.should_be_opped() {
         run_command(data, format!("deop {player_name}"), category, |server| {
             format!("De-opped {player_name} on {server}")
         })

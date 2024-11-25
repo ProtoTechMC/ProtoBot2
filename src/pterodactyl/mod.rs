@@ -29,6 +29,10 @@ impl PterodactylServerCategory {
             Self::Protobot => false,
         }
     }
+
+    pub fn should_be_opped(&self) -> bool {
+        matches!(self, Self::Cmp | Self::Copy)
+    }
 }
 
 pub trait PterodactylServerCategoryFilter {
