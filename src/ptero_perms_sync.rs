@@ -19,6 +19,7 @@ pub(crate) async fn run(
         for server in &config.pterodactyl_server_ids {
             run_on_server(data, server).await?;
         }
+        run_on_server(data, &config.pterodactyl_self).await?;
     } else {
         run_on_server(data, server).await?;
     }
