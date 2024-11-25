@@ -1,6 +1,8 @@
 use crate::{config, ProtobotData};
 use log::{error, info};
+use pterodactyl_api::client::Server;
 use std::collections::HashSet;
+use uuid::Uuid;
 
 pub(crate) async fn run(
     data: &ProtobotData,
@@ -35,9 +37,15 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
     let ignored_emails: HashSet<_> = config.panel_ignore_emails.iter().collect();
 
     let superadmin_perms: HashSet<_> = config.panel_superadmin_perms.iter().collect();
-    let admin_perms: HashSet<_> = config.panel_admin_perms.iter().collect();
+    let admin_perms: HashSet<_> = if server == config.pterodactyl_self {
+        config.panel_admin_self_perms.iter().collect()
+    } else {
+        config.panel_admin_perms.iter().collect()
+    };
     let panel_access_perms: HashSet<_> = if server == config.pterodactyl_smp {
         config.panel_access_smp_perms.iter().collect()
+    } else if server == config.pterodactyl_self {
+        HashSet::new()
     } else {
         config.panel_access_ptero_perms.iter().collect()
     };
@@ -47,27 +55,15 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
     for existing_user in existing_users {
         if remaining_superadmins.remove(&existing_user.email) {
             if existing_user.permissions.iter().collect::<HashSet<_>>() != superadmin_perms {
-                server
-                    .set_user_permissions(existing_user.uuid, config.panel_superadmin_perms.clone())
-                    .await?;
+                set_user_perms(&server, existing_user.uuid, &superadmin_perms).await?;
             }
         } else if remaining_admins.remove(&existing_user.email) {
             if existing_user.permissions.iter().collect::<HashSet<_>>() != admin_perms {
-                server
-                    .set_user_permissions(existing_user.uuid, config.panel_admin_perms.clone())
-                    .await?;
+                set_user_perms(&server, existing_user.uuid, &admin_perms).await?;
             }
         } else if remaining_panel_access.remove(&existing_user.email) {
             if existing_user.permissions.iter().collect::<HashSet<_>>() != panel_access_perms {
-                server
-                    .set_user_permissions(
-                        existing_user.uuid,
-                        panel_access_perms
-                            .iter()
-                            .map(|str| (*str).clone())
-                            .collect(),
-                    )
-                    .await?;
+                set_user_perms(&server, existing_user.uuid, &panel_access_perms).await?;
             }
         } else if !ignored_emails.contains(&existing_user.email) {
             server.delete_user(existing_user.uuid).await?;
@@ -75,26 +71,53 @@ async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::E
     }
 
     for superadmin in remaining_superadmins {
-        server
-            .add_user(superadmin, config.panel_superadmin_perms.clone())
-            .await?;
+        if !superadmin_perms.is_empty() {
+            server
+                .add_user(
+                    superadmin,
+                    superadmin_perms.iter().map(|str| (*str).clone()).collect(),
+                )
+                .await?;
+        }
     }
     for admin in remaining_admins {
-        server
-            .add_user(admin, config.panel_admin_perms.clone())
-            .await?;
+        if !admin_perms.is_empty() {
+            server
+                .add_user(
+                    admin,
+                    admin_perms.iter().map(|str| (*str).clone()).collect(),
+                )
+                .await?;
+        }
     }
     for user in remaining_panel_access {
-        server
-            .add_user(
-                user,
-                panel_access_perms
-                    .iter()
-                    .map(|str| (*str).clone())
-                    .collect(),
-            )
-            .await?;
+        if !panel_access_perms.is_empty() {
+            server
+                .add_user(
+                    user,
+                    panel_access_perms
+                        .iter()
+                        .map(|str| (*str).clone())
+                        .collect(),
+                )
+                .await?;
+        }
     }
 
+    Ok(())
+}
+
+async fn set_user_perms(
+    server: &Server<'_>,
+    user_uuid: Uuid,
+    perms: &HashSet<&String>,
+) -> Result<(), crate::Error> {
+    if perms.is_empty() {
+        server.delete_user(user_uuid).await?;
+    } else {
+        server
+            .set_user_permissions(user_uuid, perms.iter().map(|str| (*str).clone()).collect())
+            .await?;
+    }
     Ok(())
 }
