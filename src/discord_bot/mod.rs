@@ -15,8 +15,10 @@ mod update_copy;
 
 use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
+use crate::pterodactyl::{send_command_safe, PterodactylServer};
 use async_trait::async_trait;
 use log::{error, info, warn};
+use serde::Serialize;
 use serenity::builder::{
     CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
     EditInteractionResponse,
@@ -115,6 +117,47 @@ async fn process_command(
     Ok(())
 }
 
+async fn process_chatbridge(
+    ctx: Context,
+    pterodactyl: &pterodactyl_api::client::Client,
+    chatbridge_server: &PterodactylServer,
+    new_message: &Message,
+) -> Result<(), crate::Error> {
+    let ptero_server = pterodactyl.get_server(&chatbridge_server.id);
+
+    #[derive(Serialize)]
+    struct TextComponent {
+        text: String,
+    }
+
+    let sanitized_message = new_message.content_safe(&ctx);
+    if !sanitized_message.is_empty() {
+        let text_component = TextComponent {
+            text: format!("[{}] {}", new_message.author.name, sanitized_message),
+        };
+        let text_component = serde_json::to_string(&text_component)?;
+        send_command_safe(&ptero_server, format!("tellraw @a {}", text_component)).await?;
+    }
+
+    if !new_message.attachments.is_empty() {
+        let attachment_message = if new_message.attachments.len() == 1 {
+            "an attachment"
+        } else {
+            "multiple attachments"
+        };
+        let text_component = TextComponent {
+            text: format!(
+                "{} posted {} in Discord.",
+                new_message.author.name, attachment_message
+            ),
+        };
+        let text_component = serde_json::to_string(&text_component)?;
+        send_command_safe(&ptero_server, format!("tellraw @a {}", text_component)).await?;
+    }
+
+    Ok(())
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
@@ -167,20 +210,33 @@ impl EventHandler for Handler {
             Some(guild_id) => guild_id,
             None => return,
         };
+        let pterodactyl = self.pterodactyl.clone();
 
         tokio::runtime::Handle::current().spawn(async move {
             enum MessageHandling<'a> {
+                ChatBridge(&'a PterodactylServer),
                 Command(&'a str),
                 IncCounter(&'a str),
                 PermanentLatest,
                 SimpleWords,
             }
 
+            let config = config::get();
+
             let message_handling = {
-                if config::get().simple_words_channel == Some(new_message.channel_id) {
+                if config.simple_words_channel == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
                 } else if new_message.author.bot {
                     return;
+                } else if let Some(chatbridge_server) =
+                    config.pterodactyl_servers.iter().find(|server| {
+                        server
+                            .bridge
+                            .as_ref()
+                            .is_some_and(|bridge| bridge.discord_channel == new_message.channel_id)
+                    })
+                {
+                    MessageHandling::ChatBridge(chatbridge_server)
                 } else {
                     let storage = GuildStorage::get(guild_id).await;
                     if storage
@@ -207,6 +263,9 @@ impl EventHandler for Handler {
             };
 
             if let Err(err) = match message_handling {
+                MessageHandling::ChatBridge(chatbridge_server) => {
+                    process_chatbridge(ctx, &pterodactyl, chatbridge_server, &new_message).await
+                }
                 MessageHandling::Command(command) => {
                     commands::run(command, guild_id, ctx, &new_message).await
                 }

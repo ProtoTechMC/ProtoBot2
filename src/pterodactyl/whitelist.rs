@@ -1,9 +1,8 @@
-use crate::pterodactyl::PterodactylServerCategory;
+use crate::pterodactyl::{send_command_safe, PterodactylServerCategory};
 use crate::{config, ProtobotData};
 use futures::future::try_join_all;
 use git_version::git_version;
 use log::{error, info};
-use pterodactyl_api::client::ServerState;
 use serde::de::value::StrDeserializer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -257,11 +256,7 @@ async fn set_whitelist(
             ptero_server
                 .write_file("whitelist.json", whitelist_json)
                 .await?;
-            if let Err(err) = ptero_server.send_command("whitelist reload").await {
-                if ptero_server.get_resources().await?.current_state == ServerState::Running {
-                    return Err(err.into());
-                }
-            }
+            send_command_safe(&ptero_server, "whitelist reload").await?;
             info!("{}", message);
             Ok::<(), crate::Error>(())
         }
@@ -282,11 +277,7 @@ async fn run_command(
         let message = message(&server.name);
         async move {
             let ptero_server = data.pterodactyl.get_server(&server.id);
-            if let Err(err) = ptero_server.send_command(command).await {
-                if ptero_server.get_resources().await?.current_state == ServerState::Running {
-                    return Err(err.into());
-                }
-            }
+            send_command_safe(&ptero_server, command).await?;
             info!("{}", message);
             Ok::<(), crate::Error>(())
         }

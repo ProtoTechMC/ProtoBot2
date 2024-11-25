@@ -1,4 +1,6 @@
+use pterodactyl_api::client::ServerState;
 use serde::Deserialize;
+use serenity::model::id::ChannelId;
 use std::collections::BTreeMap;
 
 pub mod perms_sync;
@@ -10,6 +12,8 @@ pub struct PterodactylServer {
     pub id: String,
     pub name: String,
     pub category: PterodactylServerCategory,
+    #[serde(default)]
+    pub bridge: Option<PterodactylChatBridge>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
@@ -89,4 +93,22 @@ impl PterodactylPerms {
             None => &self.default,
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PterodactylChatBridge {
+    pub discord_channel: ChannelId,
+    pub webhook: String,
+}
+
+pub async fn send_command_safe(
+    server: &pterodactyl_api::client::Server<'_>,
+    command: impl Into<String>,
+) -> Result<(), crate::Error> {
+    if let Err(err) = server.send_command(command).await {
+        if server.get_resources().await?.current_state == ServerState::Running {
+            return Err(err.into());
+        }
+    }
+    Ok(())
 }
