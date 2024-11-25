@@ -60,7 +60,9 @@ async fn reload_config(
     _data: &ProtobotData,
     _args: impl Iterator<Item = &str>,
 ) -> Result<(), crate::Error> {
-    config::reload()
+    config::reload()?;
+    info!("Reloaded config");
+    Ok(())
 }
 
 async fn stop(_data: &ProtobotData, _args: impl Iterator<Item = &str>) -> Result<(), crate::Error> {
