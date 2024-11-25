@@ -159,7 +159,7 @@ pub(crate) async fn run(server_id: &str, data: ProtobotData) -> Result<(), crate
     info!("Starting websocket for server id {}", server_id);
     let server = data.pterodactyl.get_server(server_id);
     tokio::select! {
-        _ = crate::is_shutdown() => {}
+        _ = crate::wait_shutdown() => {}
         result = server.run_websocket_loop(|url| async {
             Ok(async_tungstenite::tokio::connect_async(url).await?.0)
         }, WebsocketListener { server: data.pterodactyl.get_server(server_id) }) => {

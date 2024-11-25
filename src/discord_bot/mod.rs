@@ -359,6 +359,9 @@ pub(crate) async fn create_client(
 }
 
 pub(crate) async fn run(mut client: Client) -> Result<(), crate::Error> {
-    client.start().await?;
+    tokio::select! {
+        _ = crate::wait_shutdown() => {}
+        result = client.start() => result?,
+    }
     Ok(())
 }

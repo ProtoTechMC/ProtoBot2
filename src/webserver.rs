@@ -71,7 +71,7 @@ pub(crate) async fn run(data: ProtobotData) -> Result<(), crate::Error> {
     loop {
         let data = data.clone();
         tokio::select! {
-            _ = crate::is_shutdown() => {
+            _ = crate::wait_shutdown() => {
                 break;
             }
             result = tcp_listener.accept() => {
