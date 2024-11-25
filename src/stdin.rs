@@ -1,5 +1,5 @@
 use crate::config;
-use crate::pterodactyl::perms_sync;
+use crate::pterodactyl::{perms_sync, whitelist};
 use crate::ProtobotData;
 use log::{error, info};
 use std::io;
@@ -59,6 +59,7 @@ declare_commands! {
     ("perms_sync", perms_sync::run, "synchronizes user permissions on a ptero server");
     ("reload", reload_config, "reloads bot config");
     ("stop", stop, "stops the bot");
+    ("whitelist", whitelist::run, "manage server whitelists");
 }
 
 async fn reload_config(

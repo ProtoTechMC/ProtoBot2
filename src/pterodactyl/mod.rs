@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 pub mod perms_sync;
 pub mod smp_commands;
+pub mod whitelist;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PterodactylServer {

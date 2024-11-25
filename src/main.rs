@@ -39,7 +39,6 @@ enum Error {
     #[error("Pterodactyl Error: {0}")]
     Pterodactyl(#[from] pterodactyl_api::Error),
     #[error("Other Error: {0}")]
-    #[allow(unused)]
     Other(String),
 }
 
