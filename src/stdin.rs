@@ -1,5 +1,6 @@
+use crate::config;
+use crate::pterodactyl::perms_sync;
 use crate::ProtobotData;
-use crate::{config, ptero_perms_sync};
 use log::{error, info};
 use std::io;
 use std::io::BufRead;
@@ -12,6 +13,10 @@ pub(crate) fn handle_stdin_loop(runtime: &tokio::runtime::Runtime, data: Protobo
                 if !crate::is_shutdown() {
                     let data = data.clone();
                     runtime.spawn(async move {
+                        let mut line = line.as_str();
+                        if let Some(slash_removed) = line.strip_prefix('/') {
+                            line = slash_removed;
+                        }
                         if let Err(err) = handle_command(&data, line.split(' ')).await {
                             error!("Error while handling stdin: {}", err);
                         }
@@ -51,7 +56,7 @@ macro_rules! declare_commands {
 }
 
 declare_commands! {
-    ("perms_sync", ptero_perms_sync::run, "synchronizes user permissions on a ptero server");
+    ("perms_sync", perms_sync::run, "synchronizes user permissions on a ptero server");
     ("reload", reload_config, "reloads bot config");
     ("stop", stop, "stops the bot");
 }

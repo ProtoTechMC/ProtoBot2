@@ -1,4 +1,6 @@
-use crate::{config, smp_commands};
+use crate::config;
+use crate::pterodactyl::{smp_commands, PterodactylServerCategory};
+use log::warn;
 use pterodactyl_api::client::backups::Backup;
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use pterodactyl_api::client::{PowerSignal, ServerState};
@@ -35,8 +37,22 @@ pub(crate) async fn run(
 
     let config = config::get();
 
-    let smp_server = pterodactyl.get_server(&config.pterodactyl_smp);
-    let copy_server = pterodactyl.get_server(&config.pterodactyl_smp_copy);
+    let Some(smp_server) = config
+        .pterodactyl_servers(PterodactylServerCategory::Smp)
+        .next()
+    else {
+        warn!("No SMP server found in the config");
+        return Ok(());
+    };
+    let smp_server = pterodactyl.get_server(&smp_server.id);
+    let Some(copy_server) = config
+        .pterodactyl_servers(PterodactylServerCategory::Copy)
+        .next()
+    else {
+        warn!("No Copy server found in the config");
+        return Ok(());
+    };
+    let copy_server = pterodactyl.get_server(&copy_server.id);
 
     command
         .edit_response(

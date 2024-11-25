@@ -1,8 +1,7 @@
 mod application;
 mod config;
 mod discord_bot;
-mod ptero_perms_sync;
-mod smp_commands;
+mod pterodactyl;
 mod stdin;
 mod webserver;
 
@@ -13,6 +12,7 @@ use flexi_logger::{
 use git_version::git_version;
 use hyper::http;
 use log::{error, info, Level, Record};
+use pterodactyl::smp_commands;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, OnceLock};
 use std::{env, io, thread};
@@ -145,14 +145,16 @@ fn main() {
         .and_then(|var| var.parse::<bool>().ok())
         != Some(true)
     {
-        #[allow(clippy::unnecessary_to_owned)] // needed to move the strings to a different thread
-        for server_id in config::get().pterodactyl_server_ids.iter().cloned() {
-            let protobot_data = protobot_data.clone();
-            runtime.spawn(async move {
-                if let Err(err) = smp_commands::run(&server_id, protobot_data).await {
-                    error!("websocket error for server id {}: {}", &server_id, err);
-                }
-            });
+        for server in config::get().pterodactyl_servers.iter().cloned() {
+            if server.category.is_minecraft() {
+                let protobot_data = protobot_data.clone();
+                runtime.spawn(async move {
+                    let server_name = server.name.clone();
+                    if let Err(err) = smp_commands::run(server, protobot_data).await {
+                        error!("websocket error for server {}: {}", server_name, err);
+                    }
+                });
+            }
         }
     }
 

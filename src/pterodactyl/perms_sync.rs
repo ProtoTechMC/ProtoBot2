@@ -1,3 +1,4 @@
+use crate::pterodactyl::PterodactylServer;
 use crate::{config, ProtobotData};
 use log::{error, info};
 use pterodactyl_api::client::Server;
@@ -16,11 +17,14 @@ pub(crate) async fn run(
     let config = config::get();
 
     if server == "all" {
-        for server in &config.pterodactyl_server_ids {
+        for server in &config.pterodactyl_servers {
             run_on_server(data, server).await?;
         }
-        run_on_server(data, &config.pterodactyl_self).await?;
     } else {
+        let Some(server) = config.pterodactyl_servers.iter().find(|s| s.name == server) else {
+            error!("Unknown server: {}", server);
+            return Ok(());
+        };
         run_on_server(data, server).await?;
     }
 
@@ -29,29 +33,38 @@ pub(crate) async fn run(
     Ok(())
 }
 
-async fn run_on_server(data: &ProtobotData, server: &str) -> Result<(), crate::Error> {
+async fn run_on_server(
+    data: &ProtobotData,
+    server: &PterodactylServer,
+) -> Result<(), crate::Error> {
     let config = config::get();
 
-    let mut remaining_superadmins: HashSet<_> = config.panel_superadmin_emails.iter().collect();
-    let mut remaining_admins: HashSet<_> = config.panel_admin_emails.iter().collect();
-    let mut remaining_panel_access: HashSet<_> = config.panel_access_emails.iter().collect();
-    let ignored_emails: HashSet<_> = config.panel_ignore_emails.iter().collect();
+    let mut remaining_superadmins: HashSet<_> =
+        config.pterodactyl_emails.superadmin.iter().collect();
+    let mut remaining_admins: HashSet<_> = config.pterodactyl_emails.admin.iter().collect();
+    let mut remaining_panel_access: HashSet<_> = config.pterodactyl_emails.normal.iter().collect();
+    let ignored_emails: HashSet<_> = config.pterodactyl_emails.ignore.iter().collect();
 
-    let superadmin_perms: HashSet<_> = config.panel_superadmin_perms.iter().collect();
-    let admin_perms: HashSet<_> = if server == config.pterodactyl_self {
-        config.panel_admin_self_perms.iter().collect()
-    } else {
-        config.panel_admin_perms.iter().collect()
-    };
-    let panel_access_perms: HashSet<_> = if server == config.pterodactyl_smp {
-        config.panel_access_smp_perms.iter().collect()
-    } else if server == config.pterodactyl_self {
-        HashSet::new()
-    } else {
-        config.panel_access_ptero_perms.iter().collect()
-    };
+    let superadmin_perms: HashSet<_> = config
+        .pterodactyl_perms
+        .superadmin
+        .get_perms(server.category)
+        .iter()
+        .collect();
+    let admin_perms: HashSet<_> = config
+        .pterodactyl_perms
+        .admin
+        .get_perms(server.category)
+        .iter()
+        .collect();
+    let panel_access_perms: HashSet<_> = config
+        .pterodactyl_perms
+        .normal
+        .get_perms(server.category)
+        .iter()
+        .collect();
 
-    let server = data.pterodactyl.get_server(server);
+    let server = data.pterodactyl.get_server(&server.id);
     let existing_users = server.list_users().await?;
     for existing_user in existing_users {
         if remaining_superadmins.remove(&existing_user.email) {

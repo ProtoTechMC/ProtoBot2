@@ -1,3 +1,4 @@
+use crate::pterodactyl::PterodactylServer;
 use crate::ProtobotData;
 use log::{error, info};
 use nom::bytes::complete::{tag, take_until1};
@@ -139,7 +140,8 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
 }
 
 struct WebsocketListener<'a> {
-    server: pterodactyl_api::client::Server<'a>,
+    ptero_server: pterodactyl_api::client::Server<'a>,
+    server: PterodactylServer,
 }
 
 impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_> {
@@ -148,21 +150,21 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
         handle: &mut H,
         output: &str,
     ) -> pterodactyl_api::Result<()> {
-        if let Err(err) = handle_server_log(handle, &self.server, output).await {
+        if let Err(err) = handle_server_log(handle, &self.ptero_server, output).await {
             error!("Error handling console output: {}", err);
         }
         Ok(())
     }
 }
 
-pub(crate) async fn run(server_id: &str, data: ProtobotData) -> Result<(), crate::Error> {
-    info!("Starting websocket for server id {}", server_id);
-    let server = data.pterodactyl.get_server(server_id);
+pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> Result<(), crate::Error> {
+    info!("Starting websocket for server {}", server.name);
+    let ptero_server = data.pterodactyl.get_server(&server.id);
     tokio::select! {
         _ = crate::wait_shutdown() => {}
-        result = server.run_websocket_loop(|url| async {
+        result = ptero_server.run_websocket_loop(|url| async {
             Ok(async_tungstenite::tokio::connect_async(url).await?.0)
-        }, WebsocketListener { server: data.pterodactyl.get_server(server_id) }) => {
+        }, WebsocketListener { ptero_server: data.pterodactyl.get_server(&server.id), server }) => {
             result?;
         }
     }

@@ -1,3 +1,6 @@
+use crate::pterodactyl::{
+    PterodactylAllPerms, PterodactylEmails, PterodactylServer, PterodactylServerCategoryFilter,
+};
 use serde::Deserialize;
 use serenity::model::id::{ChannelId, GuildId, RoleId};
 use std::fs::File;
@@ -27,21 +30,11 @@ pub struct Config {
     pub application_channel: ChannelId,
     pub application_token: String,
     pub pterodactyl_domain: String,
-    pub pterodactyl_server_ids: Vec<String>,
     pub pterodactyl_api_key: String,
-    pub pterodactyl_smp: String,
-    pub pterodactyl_smp_copy: String,
-    pub pterodactyl_self: String,
+    pub pterodactyl_servers: Vec<PterodactylServer>,
+    pub pterodactyl_emails: PterodactylEmails,
+    pub pterodactyl_perms: PterodactylAllPerms,
     pub panel_access_role: RoleId,
-    pub panel_access_ptero_perms: Vec<String>,
-    pub panel_access_smp_perms: Vec<String>,
-    pub panel_access_emails: Vec<String>,
-    pub panel_admin_perms: Vec<String>,
-    pub panel_admin_self_perms: Vec<String>,
-    pub panel_admin_emails: Vec<String>,
-    pub panel_superadmin_perms: Vec<String>,
-    pub panel_superadmin_emails: Vec<String>,
-    pub panel_ignore_emails: Vec<String>,
     pub channel_access_role: RoleId,
     pub support_channel: ChannelId,
     #[serde(default)]
@@ -52,5 +45,14 @@ impl Config {
     fn load() -> Result<Config, crate::Error> {
         let file = File::open("config.json")?;
         Ok(serde_json::from_reader(file)?)
+    }
+
+    pub fn pterodactyl_servers(
+        &self,
+        mut filter: impl PterodactylServerCategoryFilter,
+    ) -> impl Iterator<Item = &PterodactylServer> {
+        self.pterodactyl_servers
+            .iter()
+            .filter(move |server| filter.test(server.category))
     }
 }
