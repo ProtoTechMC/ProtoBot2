@@ -24,8 +24,6 @@ enum Error {
     Io(#[from] io::Error),
     #[error("HTTP Error: {0}")]
     Http(#[from] http::Error),
-    #[error("TLS Error: {0}")]
-    Rustls(#[from] rustls::Error),
     #[error("Hyper Error: {0}")]
     Hyper(#[from] hyper::Error),
     #[error("HTTP Request Error: {0}")]

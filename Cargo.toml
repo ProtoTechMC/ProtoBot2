@@ -22,9 +22,6 @@ nom = "7.1"
 pterodactyl_api = { version = "0.2", features = ["websocket"] }
 rand = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
-rslint_errors = "0.2"
-rslint_parser = "0.3"
-rustls = "0.23"
 scraper = "0.21"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

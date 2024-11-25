@@ -44,8 +44,6 @@ pub struct Config {
     pub support_channel: ChannelId,
     #[serde(default)]
     pub simple_words_channel: Option<ChannelId>,
-    #[serde(default)]
-    pub js_channel: Option<ChannelId>,
 }
 
 impl Config {
