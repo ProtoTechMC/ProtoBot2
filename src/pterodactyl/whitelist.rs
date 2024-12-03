@@ -126,8 +126,16 @@ async fn whitelist_add(
         .header("Content-Type", "application/json")
         .json(&vec![player_name])
         .send()
-        .await?
-        .error_for_status()?;
+        .await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        error!(
+            "Failed to request UUID: {}, {}",
+            status,
+            response.text().await?
+        );
+        return Ok(());
+    }
 
     #[derive(Deserialize)]
     struct MojangPlayer {
