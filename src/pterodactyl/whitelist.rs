@@ -7,6 +7,7 @@ use serde::de::value::StrDeserializer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::future::Future;
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 pub(crate) async fn run(
@@ -27,8 +28,18 @@ pub(crate) async fn run(
                 print_usage();
                 return Ok(());
             };
-            whitelist_across_categories(category, |category| whitelist_add(data, player, category))
-                .await?;
+            let uuid = args.next().map(Uuid::parse_str).transpose()?;
+            whitelist_across_categories(category, |category| {
+                whitelist_add(
+                    data,
+                    player,
+                    category,
+                    uuid.map_or_else(OnceCell::new, |uuid| {
+                        OnceCell::new_with(Some((player.to_owned(), uuid)))
+                    }),
+                )
+            })
+            .await?;
         }
         "remove" => {
             let Some(player) = args.next() else {
@@ -104,6 +115,7 @@ async fn whitelist_add(
     data: &ProtobotData,
     player_name: &str,
     category: PterodactylServerCategory,
+    name_and_uuid: OnceCell<(String, Uuid)>,
 ) -> Result<(), crate::Error> {
     let Some(mut whitelist) = get_whitelist(data, category).await? else {
         return Ok(());
@@ -117,44 +129,54 @@ async fn whitelist_add(
         return Ok(());
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(format!("protobot {}", git_version!()))
-        .build()?;
-    let response = client
-        .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
-        .header("Accept", "application/json")
-        .header("Content-Type", "application/json")
-        .json(&vec![player_name])
-        .send()
+    let (player_name, player_uuid) = name_and_uuid
+        .get_or_try_init(|| async {
+            let client = reqwest::Client::builder()
+                .user_agent(format!("protobot {}", git_version!()))
+                .build();
+            let client = match client {
+                Ok(client) => client,
+                Err(err) => return Err::<(String, Uuid), crate::Error>(err.into()),
+            };
+            let response = client
+                .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .json(&vec![player_name])
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                error!(
+                    "Failed to request UUID: {}, {}",
+                    status,
+                    response.text().await?
+                );
+                return Err(crate::Error::Other("failed to request UUID".into()));
+            }
+
+            #[derive(Deserialize)]
+            struct MojangPlayer {
+                id: Uuid,
+                name: String,
+            }
+
+            let mojang_players = response.json::<Vec<MojangPlayer>>().await?;
+            if mojang_players.len() != 1 {
+                return Err(crate::Error::Other(
+                    "Mojang server didn't return 1 player when requested".to_owned(),
+                ));
+            }
+
+            let player = mojang_players.into_iter().next().unwrap();
+            Ok::<(String, Uuid), crate::Error>((player.name, player.id))
+        })
         .await?;
-    if !response.status().is_success() {
-        let status = response.status();
-        error!(
-            "Failed to request UUID: {}, {}",
-            status,
-            response.text().await?
-        );
-        return Ok(());
-    }
-
-    #[derive(Deserialize)]
-    struct MojangPlayer {
-        id: Uuid,
-        name: String,
-    }
-
-    let mojang_players = response.json::<Vec<MojangPlayer>>().await?;
-    if mojang_players.len() != 1 {
-        return Err(crate::Error::Other(
-            "Mojang server didn't return 1 player when requested".to_owned(),
-        ));
-    }
-    let player_uuid = mojang_players[0].id;
-    let player_name: &str = &mojang_players[0].name;
 
     whitelist.push(Player {
         name: player_name.to_owned(),
-        uuid: player_uuid,
+        uuid: *player_uuid,
     });
     whitelist.sort_by_key(|player| player.name.to_ascii_lowercase());
 
@@ -295,7 +317,7 @@ async fn run_command(
 }
 
 fn print_usage() {
-    info!("(whitelist <add|remove> <player> <category|all>) | (whitelist list <category>)");
+    info!("(whitelist add <player> <category|all> [uuid]) | (whitelist remove <player> <category|all>) | (whitelist list <category>)");
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]

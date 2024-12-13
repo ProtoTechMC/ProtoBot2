@@ -36,6 +36,8 @@ enum Error {
     Serenity(#[from] serenity::Error),
     #[error("Utf8 Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+    #[error("UUID Error: {0}")]
+    Uuid(#[from] uuid::Error),
     #[error("Pterodactyl Error: {0}")]
     Pterodactyl(#[from] pterodactyl_api::Error),
     #[error("Other Error: {0}")]
