@@ -27,18 +27,14 @@ pub struct Config {
     pub discord_token: String,
     pub guild_id: GuildId,
     pub listen_ip: String,
-    pub application_channel: ChannelId,
     pub application_token: String,
     pub pterodactyl_domain: String,
     pub pterodactyl_api_key: String,
     pub pterodactyl_servers: Vec<PterodactylServer>,
     pub pterodactyl_emails: PterodactylEmails,
     pub pterodactyl_perms: PterodactylAllPerms,
-    pub panel_access_role: RoleId,
-    pub channel_access_role: RoleId,
-    pub support_channel: ChannelId,
-    #[serde(default)]
-    pub simple_words_channel: Option<ChannelId>,
+    pub special_channels: SpecialChannels,
+    pub special_roles: SpecialRoles,
 }
 
 impl Config {
@@ -55,4 +51,18 @@ impl Config {
             .iter()
             .filter(move |server| filter.test(server.category))
     }
+}
+
+#[derive(Deserialize)]
+pub struct SpecialChannels {
+    pub applications: ChannelId,
+    pub support: ChannelId,
+    #[serde(default)]
+    pub simple_words: Option<ChannelId>,
+}
+
+#[derive(Deserialize)]
+pub struct SpecialRoles {
+    pub panel_access: RoleId,
+    pub channel_access: RoleId,
 }

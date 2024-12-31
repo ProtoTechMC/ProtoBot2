@@ -18,7 +18,8 @@ pub(crate) async fn handle_application(
     for embed in embeds.embeds {
         let url = embeds.url.clone();
         config::get()
-            .application_channel
+            .special_channels
+            .applications
             .send_message(
                 &data.discord_handle,
                 CreateMessage::new().embed({
@@ -43,7 +44,8 @@ pub(crate) async fn handle_application(
 
     for attachment in attachments {
         config::get()
-            .application_channel
+            .special_channels
+            .applications
             .send_message(
                 &data.discord_handle,
                 CreateMessage::new().embed({

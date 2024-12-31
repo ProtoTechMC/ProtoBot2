@@ -78,7 +78,7 @@ async fn run_normal(
         .await?
         .guild()
         .and_then(|channel| channel.parent_id)
-        == Some(config::get().support_channel)
+        == Some(config::get().special_channels.support)
     {
         message
             .reply(ctx.http, "This is already a support channel")
@@ -91,7 +91,7 @@ async fn run_normal(
         .remove_member_role(
             guild_id,
             referenced_member.user.id,
-            config::get().channel_access_role,
+            config::get().special_roles.channel_access,
             Some("support command"),
         )
         .await?;

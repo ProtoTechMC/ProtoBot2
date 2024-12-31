@@ -73,11 +73,11 @@ async fn process_command(
                 .await?;
         }
         "update_copy" => {
-            if command
-                .member
-                .as_ref()
-                .map(|member| member.roles.contains(&config::get().panel_access_role))
-                != Some(true)
+            if command.member.as_ref().map(|member| {
+                member
+                    .roles
+                    .contains(&config::get().special_roles.panel_access)
+            }) != Some(true)
             {
                 command
                     .create_response(
@@ -224,7 +224,7 @@ impl EventHandler for Handler {
             let config = config::get();
 
             let message_handling = {
-                if config.simple_words_channel == Some(new_message.channel_id) {
+                if config.special_channels.simple_words == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
                 } else if new_message.author.bot {
                     return;
@@ -305,7 +305,7 @@ impl EventHandler for Handler {
         enum MessageEditHandling {
             SimpleWords,
         }
-        let handling = if config::get().simple_words_channel == Some(event.channel_id) {
+        let handling = if config::get().special_channels.simple_words == Some(event.channel_id) {
             MessageEditHandling::SimpleWords
         } else {
             return;
