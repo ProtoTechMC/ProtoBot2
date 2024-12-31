@@ -2,6 +2,7 @@ use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use log::warn;
 use serde::{Deserialize, Serialize};
+use serenity::builder::CreateMessage;
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::model::id::{ChannelId, GuildId, MessageId};
@@ -37,9 +38,7 @@ pub(crate) async fn on_message(
 
     channel_info.last_message = match message
         .channel_id
-        .send_message(ctx, |new_message| {
-            new_message.content(&channel_info.content)
-        })
+        .send_message(ctx, CreateMessage::new().content(&channel_info.content))
         .await
     {
         Ok(new_message) => Some(new_message.id),
@@ -110,7 +109,7 @@ pub(crate) async fn on_configure_command(
                     return Ok(());
                 }
             };
-            let channel_id = ChannelId(channel_id);
+            let channel_id = ChannelId::new(channel_id);
             let is_valid_channel = match channel_id.to_channel(&ctx).await {
                 Ok(channel) => channel.guild().map(|guild| guild.guild_id) == Some(guild_id),
                 Err(_) => false,
@@ -123,7 +122,7 @@ pub(crate) async fn on_configure_command(
             let content = args[2..].join(" ");
 
             let last_message = match channel_id
-                .send_message(&ctx, |new_message| new_message.content(&content))
+                .send_message(&ctx, CreateMessage::new().content(&content))
                 .await
             {
                 Ok(last_message) => last_message.id,
@@ -170,7 +169,7 @@ pub(crate) async fn on_configure_command(
                     return Ok(());
                 }
             };
-            let channel_id = ChannelId(channel_id);
+            let channel_id = ChannelId::new(channel_id);
 
             let mut storage = GuildStorage::get_mut(guild_id).await;
             match storage.permanent_latest.channels.remove(&channel_id) {

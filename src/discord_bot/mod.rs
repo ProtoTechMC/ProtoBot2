@@ -3,7 +3,6 @@ mod chess;
 mod commands;
 mod counter;
 mod guild_storage;
-mod js_messages;
 mod mood;
 mod permanent_latest;
 mod reaction_role_toggle;
@@ -16,12 +15,17 @@ mod update_copy;
 
 use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
+use crate::pterodactyl::{send_command_safe, PterodactylServer};
 use async_trait::async_trait;
 use log::{error, info, warn};
+use serde::Serialize;
+use serenity::builder::{
+    CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    EditInteractionResponse,
+};
 use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
-use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
-use serenity::model::application::interaction::{Interaction, InteractionResponseType};
+use serenity::model::application::{CommandInteraction, Interaction};
 use serenity::model::channel::{Message, Reaction};
 use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
@@ -40,17 +44,13 @@ struct Handler {
 
 async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<()> {
     guild_id
-        .set_application_commands(&ctx.http, |commands| {
-            commands
-                .create_application_command(|command| {
-                    command.name("hello").description("A test command")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("update_copy")
-                        .description("Updates the SMP copy")
-                })
-        })
+        .set_commands(
+            &ctx.http,
+            vec![
+                CreateCommand::new("hello").description("A test command"),
+                CreateCommand::new("update_copy").description("Updates the SMP copy"),
+            ],
+        )
         .await?;
     Ok(())
 }
@@ -58,51 +58,55 @@ async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<(
 #[allow(clippy::single_match)]
 async fn process_command(
     ctx: &Context,
-    command: ApplicationCommandInteraction,
+    command: CommandInteraction,
     pterodactyl: &pterodactyl_api::client::Client,
 ) -> serenity::Result<()> {
     match &command.data.name[..] {
         "hello" => {
             command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content("Hello World!"))
-                })
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new().content("Hello World!"),
+                    ),
+                )
                 .await?;
         }
         "update_copy" => {
-            if command
-                .member
-                .as_ref()
-                .map(|member| member.roles.contains(&config::get().panel_access_role))
-                != Some(true)
+            if command.member.as_ref().map(|member| {
+                member
+                    .roles
+                    .contains(&config::get().special_roles.panel_access)
+            }) != Some(true)
             {
                 command
-                    .create_interaction_response(&ctx.http, |response| {
-                        response
-                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                            .interaction_response_data(|message| {
-                                message.content("You do not have permission to use that command")
-                            })
-                    })
+                    .create_response(
+                        &ctx.http,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("You do not have permission to use that command"),
+                        ),
+                    )
                     .await?;
                 return Ok(());
             }
             command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content("Updating copy..."))
-                })
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new().content("Updating copy..."),
+                    ),
+                )
                 .await?;
             match update_copy::run(ctx, &command, pterodactyl).await {
                 Err(crate::Error::Serenity(err)) => return Err(err),
                 Err(err) => {
                     command
-                        .edit_original_interaction_response(&ctx.http, |message| {
-                            message.content(format!("Error updating copy: {}", err))
-                        })
+                        .edit_response(
+                            &ctx.http,
+                            EditInteractionResponse::new()
+                                .content(format!("Error updating copy: {}", err)),
+                        )
                         .await?;
                 }
                 Ok(()) => {}
@@ -110,6 +114,47 @@ async fn process_command(
         }
         _ => {}
     }
+    Ok(())
+}
+
+async fn process_chatbridge(
+    ctx: Context,
+    pterodactyl: &pterodactyl_api::client::Client,
+    chatbridge_server: &PterodactylServer,
+    new_message: &Message,
+) -> Result<(), crate::Error> {
+    let ptero_server = pterodactyl.get_server(&chatbridge_server.id);
+
+    #[derive(Serialize)]
+    struct TextComponent {
+        text: String,
+    }
+
+    let sanitized_message = new_message.content_safe(&ctx);
+    if !sanitized_message.is_empty() {
+        let text_component = TextComponent {
+            text: format!("[{}] {}", new_message.author.name, sanitized_message),
+        };
+        let text_component = serde_json::to_string(&text_component)?;
+        send_command_safe(&ptero_server, format!("tellraw @a {}", text_component)).await?;
+    }
+
+    if !new_message.attachments.is_empty() {
+        let attachment_message = if new_message.attachments.len() == 1 {
+            "an attachment"
+        } else {
+            "multiple attachments"
+        };
+        let text_component = TextComponent {
+            text: format!(
+                "{} posted {} in Discord.",
+                new_message.author.name, attachment_message
+            ),
+        };
+        let text_component = serde_json::to_string(&text_component)?;
+        send_command_safe(&ptero_server, format!("tellraw @a {}", text_component)).await?;
+    }
+
     Ok(())
 }
 
@@ -121,12 +166,13 @@ impl EventHandler for Handler {
             .join_log_channel
         {
             if let Err(err) = join_log_channel
-                .send_message(ctx, |message| {
-                    message.content(format!(
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!(
                         "{} has risen from the dead.",
                         new_member.display_name()
-                    ))
-                })
+                    )),
+                )
                 .await
             {
                 error!("Failed to send message in join log channel: {}", err);
@@ -143,14 +189,15 @@ impl EventHandler for Handler {
     ) {
         if let Some(join_log_channel) = GuildStorage::get(guild_id).await.join_log_channel {
             if let Err(err) = join_log_channel
-                .send_message(ctx, move |message| {
-                    message.content(format!(
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!(
                         "{} has been abducted by alien forces.",
                         member_data_if_available
-                            .map(|member| member.display_name().into_owned())
+                            .map(|member| member.display_name().to_owned())
                             .unwrap_or(user.name)
-                    ))
-                })
+                    )),
+                )
                 .await
             {
                 error!("Failed to send message in join log channel: {}", err);
@@ -163,23 +210,33 @@ impl EventHandler for Handler {
             Some(guild_id) => guild_id,
             None => return,
         };
+        let pterodactyl = self.pterodactyl.clone();
 
         tokio::runtime::Handle::current().spawn(async move {
             enum MessageHandling<'a> {
+                ChatBridge(&'a PterodactylServer),
                 Command(&'a str),
                 IncCounter(&'a str),
                 PermanentLatest,
                 SimpleWords,
-                JsChannel,
             }
 
+            let config = config::get();
+
             let message_handling = {
-                if config::get().simple_words_channel == Some(new_message.channel_id) {
+                if config.special_channels.simple_words == Some(new_message.channel_id) {
                     MessageHandling::SimpleWords
-                } else if config::get().js_channel == Some(new_message.channel_id) {
-                    MessageHandling::JsChannel
                 } else if new_message.author.bot {
                     return;
+                } else if let Some(chatbridge_server) =
+                    config.pterodactyl_servers.iter().find(|server| {
+                        server
+                            .bridge
+                            .as_ref()
+                            .is_some_and(|bridge| bridge.discord_channel == new_message.channel_id)
+                    })
+                {
+                    MessageHandling::ChatBridge(chatbridge_server)
                 } else {
                     let storage = GuildStorage::get(guild_id).await;
                     if storage
@@ -206,6 +263,9 @@ impl EventHandler for Handler {
             };
 
             if let Err(err) = match message_handling {
+                MessageHandling::ChatBridge(chatbridge_server) => {
+                    process_chatbridge(ctx, &pterodactyl, chatbridge_server, &new_message).await
+                }
                 MessageHandling::Command(command) => {
                     commands::run(command, guild_id, ctx, &new_message).await
                 }
@@ -214,17 +274,6 @@ impl EventHandler for Handler {
                 }
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
-                }
-                MessageHandling::JsChannel => {
-                    js_messages::on_message(
-                        ctx,
-                        !new_message.attachments.is_empty(),
-                        &new_message.content,
-                        &new_message.author,
-                        new_message.channel_id,
-                        new_message.id,
-                    )
-                    .await
                 }
                 MessageHandling::SimpleWords => {
                     simple_words::on_message(
@@ -255,12 +304,9 @@ impl EventHandler for Handler {
     ) {
         enum MessageEditHandling {
             SimpleWords,
-            JsMessage,
         }
-        let handling = if config::get().simple_words_channel == Some(event.channel_id) {
+        let handling = if config::get().special_channels.simple_words == Some(event.channel_id) {
             MessageEditHandling::SimpleWords
-        } else if config::get().js_channel == Some(event.channel_id) {
-            MessageEditHandling::JsMessage
         } else {
             return;
         };
@@ -274,21 +320,6 @@ impl EventHandler for Handler {
             if let Err(err) = match handling {
                 MessageEditHandling::SimpleWords => {
                     simple_words::on_message(
-                        ctx,
-                        event
-                            .attachments
-                            .as_ref()
-                            .map(|attachments| attachments.is_empty())
-                            == Some(false),
-                        &content,
-                        &author,
-                        event.channel_id,
-                        event.id,
-                    )
-                    .await
-                }
-                MessageEditHandling::JsMessage => {
-                    js_messages::on_message(
                         ctx,
                         event
                             .attachments
@@ -329,7 +360,7 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
+        if let Interaction::Command(command) = interaction {
             let pterodactyl = self.pterodactyl.clone();
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(err) = process_command(&ctx, command, &pterodactyl).await {
@@ -354,6 +385,9 @@ pub(crate) async fn create_client(
 }
 
 pub(crate) async fn run(mut client: Client) -> Result<(), crate::Error> {
-    client.start().await?;
+    tokio::select! {
+        _ = crate::wait_shutdown() => {}
+        result = client.start() => result?,
+    }
     Ok(())
 }

@@ -1,30 +1,35 @@
-use crate::{config, smp_commands};
-use async_trait::async_trait;
-use lazy_static::lazy_static;
+use crate::config;
+use crate::pterodactyl::{smp_commands, PterodactylServerCategory};
+use log::warn;
 use pterodactyl_api::client::backups::Backup;
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use pterodactyl_api::client::{PowerSignal, ServerState};
+use serenity::builder::EditInteractionResponse;
 use serenity::client::Context;
-use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
+use serenity::model::application::CommandInteraction;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
-lazy_static! {
-    static ref COPY_UPDATE_MUTEX: Mutex<()> = Mutex::new(());
+static COPY_UPDATE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+fn copy_update_mutex() -> &'static Mutex<()> {
+    COPY_UPDATE_MUTEX.get_or_init(|| Mutex::new(()))
 }
 
 pub(crate) async fn run(
     ctx: &Context,
-    command: &ApplicationCommandInteraction,
+    command: &CommandInteraction,
     pterodactyl: &pterodactyl_api::client::Client,
 ) -> Result<(), crate::Error> {
-    let _guard = match COPY_UPDATE_MUTEX.try_lock() {
+    let _guard = match copy_update_mutex().try_lock() {
         Ok(guard) => guard,
         Err(_) => {
             command
-                .edit_original_interaction_response(&ctx.http, |message| {
-                    message.content("Copy is already currently being updated")
-                })
+                .edit_response(
+                    &ctx.http,
+                    EditInteractionResponse::new()
+                        .content("Copy is already currently being updated"),
+                )
                 .await?;
             return Ok(());
         }
@@ -32,41 +37,63 @@ pub(crate) async fn run(
 
     let config = config::get();
 
-    let smp_server = pterodactyl.get_server(&config.pterodactyl_smp);
-    let copy_server = pterodactyl.get_server(&config.pterodactyl_smp_copy);
+    let Some(smp_server) = config
+        .pterodactyl_servers(PterodactylServerCategory::Smp)
+        .next()
+    else {
+        warn!("No SMP server found in the config");
+        return Ok(());
+    };
+    let smp_server = pterodactyl.get_server(&smp_server.id);
+    let Some(copy_server) = config
+        .pterodactyl_servers(PterodactylServerCategory::Copy)
+        .next()
+    else {
+        warn!("No Copy server found in the config");
+        return Ok(());
+    };
+    let copy_server = pterodactyl.get_server(&copy_server.id);
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nStopping SMP")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Updating copy...\nStopping SMP"),
+        )
         .await?;
     stop_and_wait(&smp_server).await?;
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nStopping copy")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Updating copy...\nStopping copy"),
+        )
         .await?;
     stop_and_wait(&copy_server).await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nCreating SMP backup to copy from")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new()
+                .content("Updating copy...\nCreating SMP backup to copy from"),
+        )
         .await?;
     let backup = create_backup_and_wait(&smp_server).await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nCreating pre-overwrite copy backup")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new()
+                .content("Updating copy...\nCreating pre-overwrite copy backup"),
+        )
         .await?;
     create_backup_and_wait(&copy_server).await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message
-                .content("Updating copy...\nCopying backup from SMP to copy. This may take a while")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content(
+                "Updating copy...\nCopying backup from SMP to copy. This may take a while",
+            ),
+        )
         .await?;
 
     copy_server.delete_file("copytemp").await?;
@@ -81,9 +108,10 @@ pub(crate) async fn run(
         .await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nExtracting backup")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Updating copy...\nExtracting backup"),
+        )
         .await?;
     copy_server.create_folder("copytemp/backup").await?;
     copy_server
@@ -91,9 +119,10 @@ pub(crate) async fn run(
         .await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nCopying world")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Updating copy...\nCopying world"),
+        )
         .await?;
     copy_server.delete_file("world").await?;
     copy_server
@@ -101,24 +130,27 @@ pub(crate) async fn run(
         .await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nCleaning up")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Updating copy...\nCleaning up"),
+        )
         .await?;
     copy_server.delete_file("copytemp").await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Updating copy...\nStarting servers")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Updating copy...\nStarting servers"),
+        )
         .await?;
     smp_server.send_power_signal(PowerSignal::Start).await?;
     copy_server.send_power_signal(PowerSignal::Start).await?;
 
     command
-        .edit_original_interaction_response(&ctx.http, |message| {
-            message.content("Copy has been updated")
-        })
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content("Copy has been updated"),
+        )
         .await?;
 
     Ok(())
@@ -130,7 +162,6 @@ async fn stop_and_wait(server: &pterodactyl_api::client::Server<'_>) -> Result<(
         return Ok(());
     }
     struct Listener;
-    #[async_trait]
     impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for Listener {
         async fn on_ready(&mut self, handle: &mut H) -> pterodactyl_api::Result<()> {
             handle.send_power_signal(PowerSignal::Stop).await

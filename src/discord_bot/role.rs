@@ -1,6 +1,7 @@
 use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use serde::{Deserialize, Serialize};
+use serenity::all::CreateMessage;
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::model::id::{GuildId, RoleId, UserId};
@@ -69,7 +70,7 @@ pub(crate) async fn run(
                     return Ok(());
                 }
             };
-            let user = UserId(user);
+            let user = UserId::new(user);
             let role = match storage.role_data.roles.get(&args[2].to_lowercase()) {
                 Some(&role) => role,
                 None => {
@@ -80,7 +81,7 @@ pub(crate) async fn run(
                 }
             };
 
-            let mut member = match guild_id.member(&ctx, user).await {
+            let member = match guild_id.member(&ctx, user).await {
                 Ok(member) => member,
                 Err(_) => {
                     message
@@ -100,19 +101,22 @@ pub(crate) async fn run(
             let message_result = message.reply(&ctx, "Added role successfully.").await;
             if let Some(log_channel) = storage.log_channel {
                 log_channel
-                    .send_message(&ctx, |log_msg| {
-                        log_msg.content(format!(
+                    .send_message(
+                        &ctx,
+                        CreateMessage::new().content(format!(
                             "{} (ID {}) gave role {} (ID {}) to {} (ID {})",
                             message.author.name,
                             message.author.id,
-                            role.to_role_cached(&ctx)
+                            guild_id
+                                .role(&ctx, role)
+                                .await
                                 .map(|role| role.name)
-                                .unwrap_or_else(|| "<unknown>".to_string()),
+                                .unwrap_or_else(|_| "<unknown>".to_string()),
                             role,
                             member.user.name,
                             user,
-                        ))
-                    })
+                        )),
+                    )
                     .await?;
             }
             message_result?;
@@ -161,8 +165,8 @@ pub(crate) async fn run(
                     return Ok(());
                 }
             };
-            let role_id = RoleId(role_id);
-            if role_id.to_role_cached(&ctx).is_none() {
+            let role_id = RoleId::new(role_id);
+            if guild_id.role(&ctx, role_id).await.is_err() {
                 storage.discard();
                 message.reply(ctx, "No role found with that id").await?;
                 return Ok(());
@@ -217,8 +221,8 @@ pub(crate) async fn run(
                     return Ok(());
                 }
             };
-            let role_id = RoleId(role_id);
-            if role_id.to_role_cached(&ctx).is_none() {
+            let role_id = RoleId::new(role_id);
+            if guild_id.role(&ctx, role_id).await.is_err() {
                 storage.discard();
                 message.reply(ctx, "No role found with that id").await?;
                 return Ok(());

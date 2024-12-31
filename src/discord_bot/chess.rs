@@ -7,12 +7,12 @@ use nom::combinator::{eof, map, not, opt, value};
 use nom::sequence::{pair, preceded, terminated, tuple};
 use nom::{Finish, IResult};
 use serde::{Deserialize, Serialize};
+use serenity::builder::{CreateEmbed, CreateMessage};
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::model::id::{GuildId, UserId};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
-
 // ===== USER INTERACTION ===== //
 
 async fn print_usage(
@@ -44,7 +44,7 @@ async fn display_name(guild_id: GuildId, ctx: &Context, user: UserId) -> String 
         .member(ctx, user)
         .await
         .ok()
-        .map(|member| member.display_name().into_owned())
+        .map(|member| member.display_name().to_owned())
         .unwrap_or_else(|| "<unknown>".to_owned())
 }
 
@@ -127,27 +127,30 @@ async fn print_board(
 
     message
         .channel_id
-        .send_message(ctx, move |new_message| {
-            new_message
+        .send_message(
+            ctx,
+            CreateMessage::new()
                 .reference_message(message)
-                .embed(move |embed| embed.image(url))
-        })
+                .embed(CreateEmbed::new().image(url)),
+        )
         .await?;
 
     if include_to_move_message {
         if game.black_to_move {
             message
                 .channel_id
-                .send_message(ctx, |new_message| {
-                    new_message.content(format!("Black to move <@{}>", game.user_black))
-                })
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!("Black to move <@{}>", game.user_black)),
+                )
                 .await?;
         } else {
             message
                 .channel_id
-                .send_message(ctx, |new_message| {
-                    new_message.content(format!("White to move <@{}>", game.user_white))
-                })
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!("White to move <@{}>", game.user_white)),
+                )
                 .await?;
         }
     }
@@ -521,7 +524,7 @@ pub(crate) async fn run(
                 .and_then(|arg| arg.strip_suffix('>'))
                 .and_then(|arg| arg.parse().ok())
             {
-                Some(id) => UserId(id),
+                Some(id) => UserId::new(id),
                 None => return print_usage(guild_id, ctx, message).await,
             };
             return start_game(message.author.id, opponent, guild_id, ctx, message).await;

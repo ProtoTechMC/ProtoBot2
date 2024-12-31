@@ -1,5 +1,5 @@
+use crate::pterodactyl::PterodactylServer;
 use crate::ProtobotData;
-use async_trait::async_trait;
 use log::{error, info};
 use nom::bytes::complete::{tag, take_until1};
 use nom::character::complete::{anychar, char, digit1};
@@ -9,6 +9,8 @@ use nom::sequence::tuple;
 use nom::Finish;
 use pterodactyl_api::client::backups::{Backup, BackupParams};
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
+use serenity::builder::ExecuteWebhook;
+use serenity::model::webhook::Webhook;
 
 pub(crate) async fn create_backup(
     server: &pterodactyl_api::client::Server<'_>,
@@ -50,7 +52,9 @@ pub(crate) async fn create_backup(
 
 async fn handle_chat_message<H: PteroWebSocketHandle>(
     handle: &mut H,
-    server: &pterodactyl_api::client::Server<'_>,
+    data: &ProtobotData,
+    chat_bridge_webhook: Option<&Webhook>,
+    ptero_server: &pterodactyl_api::client::Server<'_>,
     sender: &str,
     message: &str,
 ) -> Result<(), crate::Error> {
@@ -88,7 +92,7 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
             }
             "backup" => {
                 create_backup(
-                    server,
+                    ptero_server,
                     if args.len() > 1 {
                         Some(args[1..].join(" "))
                     } else {
@@ -104,6 +108,37 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
             }
             _ => {}
         }
+    } else if let Some(chat_bridge_webhook) = chat_bridge_webhook {
+        chat_bridge_webhook
+            .execute(
+                &data.discord_handle,
+                false,
+                ExecuteWebhook::new()
+                    .content(message)
+                    .username(sender)
+                    .avatar_url(format!("https://visage.surgeplay.com/face/256/{sender}")),
+            )
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn handle_log_message(
+    data: &ProtobotData,
+    chat_bridge_webhook: Option<&Webhook>,
+    message: &str,
+) -> Result<(), crate::Error> {
+    if let Some(chat_bridge_webhook) = chat_bridge_webhook {
+        if message.ends_with(" joined the game") || message.ends_with(" left the game") {
+            chat_bridge_webhook
+                .execute(
+                    &data.discord_handle,
+                    false,
+                    ExecuteWebhook::new().content(message).username("System"),
+                )
+                .await?;
+        }
     }
 
     Ok(())
@@ -111,7 +146,9 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
 
 async fn handle_server_log<H: PteroWebSocketHandle>(
     handle: &mut H,
-    server: &pterodactyl_api::client::Server<'_>,
+    data: &ProtobotData,
+    chat_bridge_webhook: Option<&Webhook>,
+    ptero_server: &pterodactyl_api::client::Server<'_>,
     message: &str,
 ) -> Result<(), crate::Error> {
     let parse_result: Result<(&str, (&str, &str)), nom::error::Error<&str>> = map(
@@ -133,38 +170,85 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
     )(message)
     .finish();
     if let Ok((_, (sender, message))) = parse_result {
-        handle_chat_message(handle, server, sender, message).await?;
+        handle_chat_message(
+            handle,
+            data,
+            chat_bridge_webhook,
+            ptero_server,
+            sender,
+            message,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let parse_result: Result<(&str, &str), nom::error::Error<&str>> = map(
+        tuple((
+            tuple((
+                char('['),
+                digit1,
+                char(':'),
+                digit1,
+                char(':'),
+                digit1,
+                tag("] [Server thread/INFO]: "),
+            )),
+            recognize(many1(anychar)),
+        )),
+        |(_, log_message)| log_message,
+    )(message)
+    .finish();
+    if let Ok((_, log_message)) = parse_result {
+        handle_log_message(data, chat_bridge_webhook, log_message).await?;
     }
 
     Ok(())
 }
 
 struct WebsocketListener<'a> {
-    server: pterodactyl_api::client::Server<'a>,
+    data: ProtobotData,
+    ptero_server: pterodactyl_api::client::Server<'a>,
+    chat_bridge_webhook: Option<Webhook>,
 }
 
-#[async_trait]
 impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_> {
     async fn on_console_output(
         &mut self,
         handle: &mut H,
         output: &str,
     ) -> pterodactyl_api::Result<()> {
-        if let Err(err) = handle_server_log(handle, &self.server, output).await {
+        if let Err(err) = handle_server_log(
+            handle,
+            &self.data,
+            self.chat_bridge_webhook.as_ref(),
+            &self.ptero_server,
+            output,
+        )
+        .await
+        {
             error!("Error handling console output: {}", err);
         }
         Ok(())
     }
 }
 
-pub(crate) async fn run(server_id: &str, data: ProtobotData) -> Result<(), crate::Error> {
-    info!("Starting websocket for server id {}", server_id);
-    let server = data.pterodactyl.get_server(server_id);
+pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> Result<(), crate::Error> {
+    info!("Starting websocket for server {}", server.name);
+    let chat_bridge_webhook = match &server.bridge {
+        Some(bridge) => Some(Webhook::from_url(&data.discord_handle, &bridge.webhook).await?),
+        None => None,
+    };
+    let listener = WebsocketListener {
+        data: data.clone(),
+        ptero_server: data.pterodactyl.get_server(&server.id),
+        chat_bridge_webhook,
+    };
+    let ptero_server = data.pterodactyl.get_server(&server.id);
     tokio::select! {
-        _ = crate::is_shutdown() => {}
-        result = server.run_websocket_loop(|url| async {
+        _ = crate::wait_shutdown() => {}
+        result = ptero_server.run_websocket_loop(|url| async {
             Ok(async_tungstenite::tokio::connect_async(url).await?.0)
-        }, WebsocketListener { server: data.pterodactyl.get_server(server_id) }) => {
+        }, listener) => {
             result?;
         }
     }

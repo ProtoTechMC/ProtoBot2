@@ -1,21 +1,38 @@
+use crate::config;
+use crate::pterodactyl::{perms_sync, whitelist};
 use crate::ProtobotData;
-use crate::{config, ptero_perms_sync};
 use log::{error, info};
-use tokio::io::AsyncBufReadExt;
+use std::io;
+use std::io::BufRead;
 
-pub(crate) async fn handle_stdin_loop(data: ProtobotData) -> Result<(), crate::Error> {
-    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
-    while let Some(line) = stdin.next_line().await? {
-        if let Err(err) = handle_command(&data, line.split(' ')).await {
-            error!("Error processing console command: {}", err);
+pub(crate) fn handle_stdin_loop(runtime: &tokio::runtime::Runtime, data: ProtobotData) {
+    let lines = io::BufReader::new(io::stdin()).lines();
+    for line in lines {
+        match line {
+            Ok(line) => {
+                if !crate::is_shutdown() {
+                    let data = data.clone();
+                    runtime.spawn(async move {
+                        let mut line = line.as_str();
+                        if let Some(slash_removed) = line.strip_prefix('/') {
+                            line = slash_removed;
+                        }
+                        if let Err(err) = handle_command(&data, line.split(' ')).await {
+                            error!("Error while handling stdin: {}", err);
+                        }
+                    });
+                }
+            }
+            Err(err) => {
+                error!("Failed to read line: {}", err);
+            }
         }
     }
-    Ok(())
 }
 
 macro_rules! declare_commands {
     ($(($name:literal, $func:path, $description:literal);)*) => {
-        async fn handle_command(data: &ProtobotData, mut args: impl Iterator<Item = &str>) -> Result<(), crate::Error> {
+        pub async fn handle_command(data: &ProtobotData, mut args: impl Iterator<Item = &str>) -> Result<(), crate::Error> {
             let Some(command) = args.next() else { return Ok(()); };
             match command {
                 $(
@@ -39,13 +56,22 @@ macro_rules! declare_commands {
 }
 
 declare_commands! {
-    ("perms_sync", ptero_perms_sync::run, "synchronizes user permissions on a ptero server");
+    ("perms_sync", perms_sync::run, "synchronizes user permissions on a ptero server");
     ("reload", reload_config, "reloads bot config");
+    ("stop", stop, "stops the bot");
+    ("whitelist", whitelist::run, "manage server whitelists");
 }
 
 async fn reload_config(
     _data: &ProtobotData,
     _args: impl Iterator<Item = &str>,
 ) -> Result<(), crate::Error> {
-    config::reload()
+    config::reload()?;
+    info!("Reloaded config");
+    Ok(())
+}
+
+async fn stop(_data: &ProtobotData, _args: impl Iterator<Item = &str>) -> Result<(), crate::Error> {
+    crate::shutdown();
+    Ok(())
 }

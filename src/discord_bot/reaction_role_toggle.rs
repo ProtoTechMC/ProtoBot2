@@ -1,6 +1,7 @@
 use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use log::error;
+use serenity::all::CreateMessage;
 use serenity::client::Context;
 use serenity::model::channel::{Message, Reaction, ReactionType};
 use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId};
@@ -52,9 +53,9 @@ pub(crate) async fn run(
         }
     };
 
-    let role_id = RoleId(role_id);
-    let channel_id = ChannelId(channel_id);
-    let message_id = MessageId(message_id);
+    let role_id = RoleId::new(role_id);
+    let channel_id = ChannelId::new(channel_id);
+    let message_id = MessageId::new(message_id);
 
     let emoji = match parse_emoji(args[4]) {
         Some(emoji) => emoji,
@@ -65,11 +66,7 @@ pub(crate) async fn run(
     };
 
     if !remove {
-        if role_id
-            .to_role_cached(&ctx)
-            .filter(|role| role.guild_id == guild_id)
-            .is_none()
-        {
+        if guild_id.role(&ctx, role_id).await.is_err() {
             message
                 .reply(ctx, "Could not find that role in this server")
                 .await?;
@@ -178,46 +175,44 @@ pub(crate) async fn on_reaction_change(ctx: Context, reaction: Reaction, remove:
         let storage = GuildStorage::get(guild).await;
         if let Some(roles) = storage.reaction_roles.get(&message_id) {
             if let Some((_, role)) = roles.iter().find(|(reaction, _)| &emoji == reaction) {
-                if let Some(role) = role.to_role_cached(&ctx) {
-                    if let Err(err) = if remove {
-                        ctx.http
-                            .remove_member_role(
-                                guild.0,
-                                user.0,
-                                role.id.0,
-                                Some("Removed reaction"),
-                            )
-                            .await
-                    } else {
-                        ctx.http
-                            .add_member_role(guild.0, user.0, role.id.0, Some("Added reaction"))
-                            .await
-                    } {
-                        error!(
-                            "Failed to {} role {} {} user {} in guild {}: {}",
-                            if remove { "remove" } else { "add" },
-                            role.name,
-                            if remove { "from" } else { "to" },
-                            user,
-                            guild.name(ctx).as_deref().unwrap_or("<unknown>"),
-                            err
-                        );
-                        return;
-                    }
+                let Ok(role) = guild.role(&ctx, *role).await else {
+                    error!("Could not find role {} in guild {}", *role, guild);
+                    return;
+                };
+                if let Err(err) = if remove {
+                    ctx.http
+                        .remove_member_role(guild, user, role.id, Some("Removed reaction"))
+                        .await
+                } else {
+                    ctx.http
+                        .add_member_role(guild, user, role.id, Some("Added reaction"))
+                        .await
+                } {
+                    error!(
+                        "Failed to {} role {} {} user {} in guild {}: {}",
+                        if remove { "remove" } else { "add" },
+                        role.name,
+                        if remove { "from" } else { "to" },
+                        user,
+                        guild.name(ctx).as_deref().unwrap_or("<unknown>"),
+                        err
+                    );
+                    return;
+                }
 
-                    if let Ok(channel) = user.create_dm_channel(&ctx).await {
-                        let guild_name = guild.name(&ctx);
-                        let _ = channel
-                            .send_message(ctx, move |message| {
-                                message.content(format!(
-                                    "{} role {} in server {}",
-                                    if remove { "Taken your" } else { "Given you" },
-                                    role.name,
-                                    guild_name.as_deref().unwrap_or("<unknown>")
-                                ))
-                            })
-                            .await;
-                    }
+                if let Ok(channel) = user.create_dm_channel(&ctx).await {
+                    let guild_name = guild.name(&ctx);
+                    let _ = channel
+                        .send_message(
+                            ctx,
+                            CreateMessage::new().content(format!(
+                                "{} role {} in server {}",
+                                if remove { "Taken your" } else { "Given you" },
+                                role.name,
+                                guild_name.as_deref().unwrap_or("<unknown>")
+                            )),
+                        )
+                        .await;
                 }
             }
         }

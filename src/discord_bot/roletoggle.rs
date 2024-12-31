@@ -57,8 +57,8 @@ pub(crate) async fn run(
                     return Ok(());
                 }
             };
-            let role = RoleId(role);
-            if role.to_role_cached(&ctx).is_none() {
+            let role = RoleId::new(role);
+            if guild_id.role(&ctx, role).await.is_err() {
                 storage.discard();
                 message.reply(ctx, "No such role with that id").await?;
                 return Ok(());
@@ -66,8 +66,8 @@ pub(crate) async fn run(
 
             let permission_role = match args.get(3).map(|role| role.parse()) {
                 Some(Ok(role)) => {
-                    let role = RoleId(role);
-                    if role.to_role_cached(&ctx).is_none() {
+                    let role = RoleId::new(role);
+                    if guild_id.role(&ctx, role).await.is_err() {
                         storage.discard();
                         message
                             .reply(ctx, "No such permission role with that id")
@@ -178,7 +178,7 @@ impl<'de> Deserialize<'de> for RoleToggleInfo {
 
             fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<RoleToggleInfo, E> {
                 Ok(RoleToggleInfo {
-                    role: RoleId(value),
+                    role: RoleId::new(value),
                     ..Default::default()
                 })
             }

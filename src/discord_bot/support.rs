@@ -1,6 +1,8 @@
 use crate::config;
+use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use futures::future::join_all;
+use serenity::builder::{CreateEmbed, CreateMessage};
 use serenity::client::Context;
 use serenity::model::channel::Message;
 use serenity::model::id::GuildId;
@@ -56,20 +58,26 @@ async fn run_normal(
     // obtain the member in any normal way
     let referenced_member = ctx
         .http
-        .get_member(guild_id.0, referenced_message.author.id.0)
+        .get_member(guild_id, referenced_message.author.id)
         .await?;
+
+    let mut admin_override = false;
 
     if referenced_member.joined_at.map(|joined_at| {
         now.unix_timestamp() - joined_at.unix_timestamp() <= MAX_SUPPORT_USED_ON_TIME
     }) != Some(true)
     {
-        message
-            .reply(
-                ctx.http,
-                "This person has been in the Discord for too long to use this command on them",
-            )
-            .await?;
-        return Ok(());
+        if check_admin(&ctx, message).await? {
+            admin_override = true;
+        } else {
+            message
+                .reply(
+                    ctx.http,
+                    "This person has been in the Discord for too long to use this command on them",
+                )
+                .await?;
+            return Ok(());
+        }
     }
 
     if message
@@ -77,7 +85,7 @@ async fn run_normal(
         .await?
         .guild()
         .and_then(|channel| channel.parent_id)
-        == Some(config::get().support_channel)
+        == Some(config::get().special_channels.support)
     {
         message
             .reply(ctx.http, "This is already a support channel")
@@ -88,25 +96,27 @@ async fn run_normal(
     referenced_message.reply_ping(&ctx.http, "Please read the message in the role reactions channel and react again. Questions should only go in the support channel").await?;
     ctx.http
         .remove_member_role(
-            guild_id.0,
-            referenced_member.user.id.0,
-            config::get().channel_access_role.0,
+            guild_id,
+            referenced_member.user.id,
+            config::get().special_roles.channel_access,
             Some("support command"),
         )
         .await?;
 
-    let mut storage = GuildStorage::get_mut(guild_id).await;
-    if storage
-        .users_sent_to_support
-        .insert(referenced_member.user.id)
-    {
-        *storage
-            .send_to_support_leaderboard
-            .entry(message.author.id)
-            .or_default() += 1;
-        storage.save().await;
-    } else {
-        storage.discard();
+    if !admin_override {
+        let mut storage = GuildStorage::get_mut(guild_id).await;
+        if storage
+            .users_sent_to_support
+            .insert(referenced_member.user.id)
+        {
+            *storage
+                .send_to_support_leaderboard
+                .entry(message.author.id)
+                .or_default() += 1;
+            storage.save().await;
+        } else {
+            storage.discard();
+        }
     }
 
     Ok(())
@@ -153,11 +163,12 @@ async fn show_leaderboard(
 
     message
         .channel_id
-        .send_message(&ctx, |new_message| {
-            new_message
-                .embed(|embed| embed.field("Send-to-support leaderboard:", embed_value, false))
-                .reference_message(message)
-        })
+        .send_message(
+            &ctx,
+            CreateMessage::new()
+                .embed(CreateEmbed::new().field("Send-to-support leaderboard:", embed_value, false))
+                .reference_message(message),
+        )
         .await?;
 
     Ok(())

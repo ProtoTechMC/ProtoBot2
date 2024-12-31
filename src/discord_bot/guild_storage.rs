@@ -5,16 +5,17 @@ use crate::discord_bot::roletoggle::RoleToggleInfo;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
-use lazy_static::lazy_static;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serenity::model::channel::ReactionType;
 use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId, UserId};
 use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
+use std::sync::OnceLock;
 
-lazy_static! {
-    static ref GUILD_STORAGE: DashMap<GuildId, GuildStorage> = DashMap::new();
+static GUILD_STORAGE: OnceLock<DashMap<GuildId, GuildStorage>> = OnceLock::new();
+fn guild_storage() -> &'static DashMap<GuildId, GuildStorage> {
+    GUILD_STORAGE.get_or_init(DashMap::new)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,20 +72,20 @@ fn default_command_prefix() -> String {
 
 impl GuildStorage {
     pub async fn get(guild_id: GuildId) -> Ref<'static, GuildId, GuildStorage> {
-        if let Some(entry) = GUILD_STORAGE.get(&guild_id) {
+        if let Some(entry) = guild_storage().get(&guild_id) {
             return entry;
         }
-        match GUILD_STORAGE.entry(guild_id) {
+        match guild_storage().entry(guild_id) {
             Entry::Occupied(entry) => entry.into_ref().downgrade(),
             Entry::Vacant(entry) => entry.insert(Self::load(guild_id).await).downgrade(),
         }
     }
 
     pub async fn get_mut(guild_id: GuildId) -> StorageRef {
-        if let Some(entry) = GUILD_STORAGE.get_mut(&guild_id) {
+        if let Some(entry) = guild_storage().get_mut(&guild_id) {
             return StorageRef::new(entry);
         }
-        match GUILD_STORAGE.entry(guild_id) {
+        match guild_storage().entry(guild_id) {
             Entry::Occupied(entry) => StorageRef::new(entry.into_ref()),
             Entry::Vacant(entry) => StorageRef::new(entry.insert(Self::load(guild_id).await)),
         }

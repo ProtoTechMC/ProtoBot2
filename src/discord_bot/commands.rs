@@ -6,6 +6,7 @@ use crate::discord_bot::{
 use chrono::Datelike;
 use log::info;
 use serde::Deserialize;
+use serenity::builder::{CreateAttachment, CreateEmbed, CreateEmbedFooter, CreateMessage};
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
 use serenity::model::id::GuildId;
@@ -105,7 +106,7 @@ async fn handle_custom_command(
     let command = command.to_lowercase();
     let storage = GuildStorage::get(guild_id).await;
     if let Some(toggle_info) = storage.role_toggles.get(&command) {
-        let mut member = guild_id.member(&ctx, message.author.id).await?;
+        let member = guild_id.member(&ctx, message.author.id).await?;
 
         if let Some(permission_role) = toggle_info.permission_role {
             if !member.roles.contains(&permission_role) {
@@ -130,9 +131,7 @@ async fn handle_custom_command(
 }
 
 pub(super) async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
-    if let Some(guild_id) = message.guild_id {
-        let member = guild_id.member(ctx, message.author.id).await?;
-        let permissions = member.permissions(ctx)?;
+    if let Some(permissions) = message.author_permissions(ctx) {
         if permissions.contains(Permissions::ADMINISTRATOR) {
             return Ok(true);
         }
@@ -161,7 +160,7 @@ async fn prefix(
     }
 
     let mut storage = GuildStorage::get_mut(guild_id).await;
-    storage.command_prefix = args.to_owned();
+    args.clone_into(&mut storage.command_prefix);
     storage.save().await;
     message
         .reply(ctx, format!("Command prefix changed to \"{}\"", args))
@@ -202,11 +201,12 @@ async fn cat(
         .await?;
     message
         .channel_id
-        .send_message(ctx, |new_message| {
-            new_message
+        .send_message(
+            ctx,
+            CreateMessage::new()
                 .reference_message(message)
-                .add_file((image.as_ref(), "cat.png"))
-        })
+                .add_file(CreateAttachment::bytes(image, "cat.png")),
+        )
         .await?;
     Ok(())
 }
@@ -273,11 +273,12 @@ async fn dog(
     let image = client.get(json.url).send().await?.bytes().await?;
     message
         .channel_id
-        .send_message(ctx, |new_message| {
-            new_message
+        .send_message(
+            ctx,
+            CreateMessage::new()
                 .reference_message(message)
-                .add_file((image.as_ref(), "dog.png"))
-        })
+                .add_file(CreateAttachment::bytes(image, "dog.png")),
+        )
         .await?;
     Ok(())
 }
@@ -333,23 +334,24 @@ async fn google(
 
     message
         .channel_id
-        .send_message(&ctx, |new_message| {
-            new_message
+        .send_message(
+            &ctx,
+            CreateMessage::new()
                 .reference_message(message)
                 .content(format!("<https://google.com/search?q={}>", url_encoded))
-                .embed(|embed| {
-                    embed
+                .embed(
+                    CreateEmbed::new()
                         .title("Google Search for Lazy People")
                         .field("Googling this:", args, false)
-                        .footer(|footer| {
-                            footer.text(&message.author.name);
+                        .footer({
+                            let mut footer = CreateEmbedFooter::new(&message.author.name);
                             if let Some(avatar) = &message.author.avatar_url() {
-                                footer.icon_url(avatar);
+                                footer = footer.icon_url(avatar);
                             }
                             footer
-                        })
-                })
-        })
+                        }),
+                ),
+        )
         .await?;
 
     Ok(())
@@ -469,9 +471,10 @@ async fn help(
 
     message
         .channel_id
-        .send_message(ctx, |reply| {
-            reply.reference_message(message).embed(|embed| {
-                embed
+        .send_message(
+            ctx,
+            CreateMessage::new().reference_message(message).embed(
+                CreateEmbed::new()
                     .title("ProtoBot command help")
                     .field(
                         "Built-in commands:",
@@ -509,9 +512,9 @@ async fn help(
                                 .join("\n")
                         },
                         false,
-                    )
-            })
-        })
+                    ),
+            ),
+        )
         .await?;
 
     Ok(())

@@ -1,8 +1,7 @@
 mod application;
 mod config;
 mod discord_bot;
-mod ptero_perms_sync;
-mod smp_commands;
+mod pterodactyl;
 mod stdin;
 mod webserver;
 
@@ -12,12 +11,12 @@ use flexi_logger::{
 };
 use git_version::git_version;
 use hyper::http;
-use lazy_static::lazy_static;
 use log::{error, info, Level, Record};
-use std::future::Future;
-use std::sync::Arc;
-use std::{env, io};
-use tokio::sync::Notify;
+use pterodactyl::smp_commands;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, OnceLock};
+use std::{env, io, thread};
+use tokio::sync::Semaphore;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -25,8 +24,6 @@ enum Error {
     Io(#[from] io::Error),
     #[error("HTTP Error: {0}")]
     Http(#[from] http::Error),
-    #[error("TLS Error: {0}")]
-    Rustls(#[from] rustls::Error),
     #[error("Hyper Error: {0}")]
     Hyper(#[from] hyper::Error),
     #[error("HTTP Request Error: {0}")]
@@ -39,6 +36,8 @@ enum Error {
     Serenity(#[from] serenity::Error),
     #[error("Utf8 Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+    #[error("UUID Error: {0}")]
+    Uuid(#[from] uuid::Error),
     #[error("Pterodactyl Error: {0}")]
     Pterodactyl(#[from] pterodactyl_api::Error),
     #[error("Other Error: {0}")]
@@ -51,15 +50,24 @@ pub struct ProtobotData {
     pub pterodactyl: Arc<pterodactyl_api::client::Client>,
 }
 
-lazy_static! {
-    static ref SHUTDOWN: Notify = Notify::new();
-}
-pub fn shutdown() {
-    SHUTDOWN.notify_waiters();
+static IS_SHUTDOWN: AtomicBool = AtomicBool::new(false);
+static SHUTDOWN_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
+fn shutdown_semaphore() -> &'static Semaphore {
+    SHUTDOWN_SEMAPHORE.get_or_init(|| Semaphore::new(0))
 }
 
-pub fn is_shutdown() -> impl Future<Output = ()> {
-    SHUTDOWN.notified()
+pub fn shutdown() {
+    info!("Shutting down");
+    IS_SHUTDOWN.store(true, std::sync::atomic::Ordering::Release);
+    shutdown_semaphore().add_permits(1);
+}
+
+pub fn is_shutdown() -> bool {
+    IS_SHUTDOWN.load(std::sync::atomic::Ordering::Acquire)
+}
+
+pub async fn wait_shutdown() {
+    let _ = shutdown_semaphore().acquire().await.unwrap();
 }
 
 fn main() {
@@ -101,6 +109,10 @@ fn main() {
         .expect("Failed to initialize logger");
     log_panics::init();
 
+    if let Err(err) = ctrlc::set_handler(shutdown) {
+        error!("Could not set Ctrl-C handler: {}", err);
+    }
+
     info!("Starting protobot {}", git_version!());
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -125,7 +137,7 @@ fn main() {
     };
 
     let protobot_data = ProtobotData {
-        discord_handle: discord_bot.cache_and_http.http.clone(),
+        discord_handle: discord_bot.http.clone(),
         pterodactyl,
     };
 
@@ -134,14 +146,16 @@ fn main() {
         .and_then(|var| var.parse::<bool>().ok())
         != Some(true)
     {
-        #[allow(clippy::unnecessary_to_owned)] // needed to move the strings to a different thread
-        for server_id in config::get().pterodactyl_server_ids.iter().cloned() {
-            let protobot_data = protobot_data.clone();
-            runtime.spawn(async move {
-                if let Err(err) = smp_commands::run(&server_id, protobot_data).await {
-                    error!("websocket error for server id {}: {}", server_id, err);
-                }
-            });
+        for server in config::get().pterodactyl_servers.iter().cloned() {
+            if server.category.is_minecraft() {
+                let protobot_data = protobot_data.clone();
+                runtime.spawn(async move {
+                    let server_name = server.name.clone();
+                    if let Err(err) = smp_commands::run(server, protobot_data).await {
+                        error!("websocket error for server {}: {}", server_name, err);
+                    }
+                });
+            }
         }
     }
 
@@ -151,18 +165,25 @@ fn main() {
         }
     });
 
-    runtime.spawn({
+    {
         let protobot_data = protobot_data.clone();
-        async move {
-            if let Err(err) = stdin::handle_stdin_loop(protobot_data).await {
-                error!("stdin error: {}", err);
+        runtime.spawn(async move {
+            if let Err(err) = webserver::run(protobot_data).await {
+                error!("webserver error: {}", err);
             }
-        }
-    });
+        });
+    }
 
-    runtime.block_on(async move {
-        if let Err(err) = webserver::run(protobot_data).await {
-            error!("webserver error: {}", err);
-        }
-    });
+    let runtime = Arc::new(runtime);
+
+    {
+        let runtime = runtime.clone();
+        let protobot_data = protobot_data.clone();
+        thread::Builder::new()
+            .name("stdin".to_owned())
+            .spawn(move || stdin::handle_stdin_loop(&runtime, protobot_data))
+            .expect("Failed to spawn stdin thread");
+    }
+
+    runtime.block_on(wait_shutdown());
 }
