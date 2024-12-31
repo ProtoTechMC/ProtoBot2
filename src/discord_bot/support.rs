@@ -1,4 +1,5 @@
 use crate::config;
+use crate::discord_bot::commands::check_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use futures::future::join_all;
 use serenity::builder::{CreateEmbed, CreateMessage};
@@ -60,17 +61,23 @@ async fn run_normal(
         .get_member(guild_id, referenced_message.author.id)
         .await?;
 
+    let mut admin_override = false;
+
     if referenced_member.joined_at.map(|joined_at| {
         now.unix_timestamp() - joined_at.unix_timestamp() <= MAX_SUPPORT_USED_ON_TIME
     }) != Some(true)
     {
-        message
-            .reply(
-                ctx.http,
-                "This person has been in the Discord for too long to use this command on them",
-            )
-            .await?;
-        return Ok(());
+        if check_admin(&ctx, message).await? {
+            admin_override = true;
+        } else {
+            message
+                .reply(
+                    ctx.http,
+                    "This person has been in the Discord for too long to use this command on them",
+                )
+                .await?;
+            return Ok(());
+        }
     }
 
     if message
@@ -96,18 +103,20 @@ async fn run_normal(
         )
         .await?;
 
-    let mut storage = GuildStorage::get_mut(guild_id).await;
-    if storage
-        .users_sent_to_support
-        .insert(referenced_member.user.id)
-    {
-        *storage
-            .send_to_support_leaderboard
-            .entry(message.author.id)
-            .or_default() += 1;
-        storage.save().await;
-    } else {
-        storage.discard();
+    if !admin_override {
+        let mut storage = GuildStorage::get_mut(guild_id).await;
+        if storage
+            .users_sent_to_support
+            .insert(referenced_member.user.id)
+        {
+            *storage
+                .send_to_support_leaderboard
+                .entry(message.author.id)
+                .or_default() += 1;
+            storage.save().await;
+        } else {
+            storage.discard();
+        }
     }
 
     Ok(())
