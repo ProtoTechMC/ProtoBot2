@@ -11,8 +11,8 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
-static COPY_UPDATE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 fn copy_update_mutex() -> &'static Mutex<()> {
+    static COPY_UPDATE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
     COPY_UPDATE_MUTEX.get_or_init(|| Mutex::new(()))
 }
 

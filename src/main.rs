@@ -51,8 +51,8 @@ pub struct ProtobotData {
 }
 
 static IS_SHUTDOWN: AtomicBool = AtomicBool::new(false);
-static SHUTDOWN_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
 fn shutdown_semaphore() -> &'static Semaphore {
+    static SHUTDOWN_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
     SHUTDOWN_SEMAPHORE.get_or_init(|| Semaphore::new(0))
 }
 

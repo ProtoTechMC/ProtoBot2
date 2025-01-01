@@ -6,9 +6,8 @@ use serenity::model::id::{ChannelId, GuildId, RoleId};
 use std::fs::File;
 use std::sync::{Arc, OnceLock, RwLock};
 
-static CONFIG: OnceLock<RwLock<Arc<Config>>> = OnceLock::new();
-
 fn writable_config() -> &'static RwLock<Arc<Config>> {
+    static CONFIG: OnceLock<RwLock<Arc<Config>>> = OnceLock::new();
     CONFIG.get_or_init(|| RwLock::new(Arc::new(Config::load().unwrap())))
 }
 
