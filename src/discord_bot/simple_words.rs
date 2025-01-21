@@ -1,5 +1,6 @@
 use serenity::builder::CreateMessage;
 use serenity::client::Context;
+use serenity::model::channel::MessageFlags;
 use serenity::model::id::{ChannelId, MessageId};
 use serenity::model::user::User;
 use std::collections::HashSet;
@@ -82,7 +83,12 @@ pub(crate) async fn on_message(
                 .await?;
             if !content.is_empty() {
                 dm_channel
-                    .send_message(ctx, CreateMessage::new().content(content))
+                    .send_message(
+                        ctx,
+                        CreateMessage::new()
+                            .content(content)
+                            .flags(MessageFlags::SUPPRESS_NOTIFICATIONS),
+                    )
                     .await?;
             }
         }
