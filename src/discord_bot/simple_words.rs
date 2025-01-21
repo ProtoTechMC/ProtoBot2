@@ -6,8 +6,8 @@ use serenity::model::user::User;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-static TOP_10K_WORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
 fn top_10k_words() -> &'static HashSet<&'static str> {
+    static TOP_10K_WORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
     TOP_10K_WORDS.get_or_init(|| {
         let mut set = HashSet::with_capacity(5000);
         for word in include!("simple_writer_words.txt") {

@@ -13,8 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::sync::OnceLock;
 
-static GUILD_STORAGE: OnceLock<DashMap<GuildId, GuildStorage>> = OnceLock::new();
 fn guild_storage() -> &'static DashMap<GuildId, GuildStorage> {
+    static GUILD_STORAGE: OnceLock<DashMap<GuildId, GuildStorage>> = OnceLock::new();
     GUILD_STORAGE.get_or_init(DashMap::new)
 }
 
