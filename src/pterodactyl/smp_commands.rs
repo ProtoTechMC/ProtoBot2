@@ -141,7 +141,7 @@ async fn handle_log_message(
                         false,
                         ExecuteWebhook::new()
                             .content(sanitized_message)
-                            .username("System")
+                            .username(format!("{sanitized_username} [System]"))
                             .avatar_url(avatar_url(&sanitized_username)),
                     )
                     .await?;
