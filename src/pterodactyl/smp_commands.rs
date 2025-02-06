@@ -11,6 +11,7 @@ use pterodactyl_api::client::backups::{Backup, BackupParams};
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use serenity::builder::ExecuteWebhook;
 use serenity::model::webhook::Webhook;
+use std::borrow::Cow;
 
 pub(crate) async fn create_backup(
     server: &pterodactyl_api::client::Server<'_>,
@@ -116,7 +117,7 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
                 ExecuteWebhook::new()
                     .content(message)
                     .username(sender)
-                    .avatar_url(format!("https://visage.surgeplay.com/face/256/{sender}")),
+                    .avatar_url(avatar_url(sender)),
             )
             .await?;
     }
@@ -130,14 +131,21 @@ async fn handle_log_message(
     message: &str,
 ) -> Result<(), crate::Error> {
     if let Some(chat_bridge_webhook) = chat_bridge_webhook {
-        if message.ends_with(" joined the game") || message.ends_with(" left the game") {
-            chat_bridge_webhook
-                .execute(
-                    &data.discord_handle,
-                    false,
-                    ExecuteWebhook::new().content(message).username("System"),
-                )
-                .await?;
+        if let Some((username, action)) = message.split_once(' ') {
+            if action == "joined the game" || action == "left the game" {
+                let sanitized_username = sanitize_username(username);
+                let sanitized_message = format!("{} {}", sanitized_username, action);
+                chat_bridge_webhook
+                    .execute(
+                        &data.discord_handle,
+                        false,
+                        ExecuteWebhook::new()
+                            .content(sanitized_message)
+                            .username("System")
+                            .avatar_url(avatar_url(&sanitized_username)),
+                    )
+                    .await?;
+            }
         }
     }
 
@@ -175,7 +183,7 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
             data,
             chat_bridge_webhook,
             ptero_server,
-            sender,
+            &sanitize_username(sender),
             message,
         )
         .await?;
@@ -203,6 +211,32 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
     }
 
     Ok(())
+}
+
+fn avatar_url(username: &str) -> String {
+    format!("https://visage.surgeplay.com/face/256/{username}")
+}
+
+fn sanitize_username(username: &str) -> Cow<str> {
+    if !username.contains('§') {
+        return username.into();
+    }
+
+    let mut result = String::with_capacity(username.len());
+    let mut seen_section = false;
+    for c in username.chars() {
+        if c == '§' {
+            seen_section = true;
+        } else if seen_section {
+            seen_section = false;
+        } else {
+            result.push(c);
+        }
+    }
+    if seen_section {
+        result.push('§');
+    }
+    result.into()
 }
 
 struct WebsocketListener<'a> {
