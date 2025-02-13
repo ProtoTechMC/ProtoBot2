@@ -286,6 +286,10 @@ async fn broadcast_message(
     if let Some(username) = username {
         discord_sender += &format!(" {username}");
     }
+    if discord_sender.len() > 32 {
+        discord_sender.truncate(29);
+        discord_sender += "...";
+    }
     try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
         broadcast_to_discord(
             discord_handle,
@@ -329,10 +333,11 @@ fn avatar_url(username: &str) -> String {
 }
 
 fn sanitize_username(username: &str) -> Cow<str> {
-    if !username.contains('§') {
+    if !username.contains('§') && (!username.contains('[') || !username.contains(']')) {
         return username.into();
     }
 
+    // remove legacy formatting codes
     let mut result = String::with_capacity(username.len());
     let mut seen_section = false;
     for c in username.chars() {
@@ -347,6 +352,24 @@ fn sanitize_username(username: &str) -> Cow<str> {
     if seen_section {
         result.push('§');
     }
+
+    // remove team name prefixes
+    while result.starts_with('[') {
+        if let Some(close_bracket_index) = result.find(']') {
+            result.drain(..=close_bracket_index);
+        } else {
+            break;
+        }
+    }
+    let non_whitespace_index = result
+        .find(|char: char| !char.is_whitespace())
+        .unwrap_or_else(|| result.len());
+    result.drain(..non_whitespace_index);
+
+    if result.is_empty() {
+        return username.into();
+    }
+
     result.into()
 }
 
