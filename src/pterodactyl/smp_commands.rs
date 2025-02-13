@@ -147,21 +147,27 @@ async fn handle_log_message(
     ptero_server_id: &str,
     message: &str,
 ) -> Result<(), crate::Error> {
-    if let Some((username, action)) = message.split_once(' ') {
-        if action == "joined the game" || action == "left the game" {
-            let sanitized_username = sanitize_username(username);
-            let message = format!("{} {}", sanitized_username, action);
-            broadcast_message(
-                &data.discord_handle,
-                &data.pterodactyl,
-                webhook_cache,
-                ptero_server_id,
-                Some(&sanitized_username),
-                true,
-                &message,
-            )
-            .await?;
-        }
+    #[allow(clippy::manual_map)]
+    let leave_join_user_action = if let Some(username) = message.strip_suffix(" joined the game") {
+        Some((username, "joined the game"))
+    } else if let Some(username) = message.strip_suffix(" left the game") {
+        Some((username, "left the game"))
+    } else {
+        None
+    };
+    if let Some((username, action)) = leave_join_user_action {
+        let sanitized_username = sanitize_username(username, true);
+        let message = format!("{} {}", sanitize_username(username, false), action);
+        broadcast_message(
+            &data.discord_handle,
+            &data.pterodactyl,
+            webhook_cache,
+            ptero_server_id,
+            Some(&sanitized_username),
+            true,
+            &message,
+        )
+        .await?;
     }
 
     Ok(())
@@ -200,7 +206,7 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
             webhook_cache,
             ptero_server_id,
             ptero_server,
-            &sanitize_username(sender),
+            &sanitize_username(sender, true),
             message,
         )
         .await?;
@@ -332,7 +338,7 @@ fn avatar_url(username: &str) -> String {
     format!("https://visage.surgeplay.com/face/256/{username}")
 }
 
-fn sanitize_username(username: &str) -> Cow<str> {
+fn sanitize_username(username: &str, remove_team_prefix: bool) -> Cow<str> {
     if !username.contains('§') && (!username.contains('[') || !username.contains(']')) {
         return username.into();
     }
@@ -354,17 +360,19 @@ fn sanitize_username(username: &str) -> Cow<str> {
     }
 
     // remove team name prefixes
-    while result.starts_with('[') {
-        if let Some(close_bracket_index) = result.find(']') {
-            result.drain(..=close_bracket_index);
-        } else {
-            break;
+    if remove_team_prefix {
+        while result.starts_with('[') {
+            if let Some(close_bracket_index) = result.find(']') {
+                result.drain(..=close_bracket_index);
+            } else {
+                break;
+            }
         }
+        let non_whitespace_index = result
+            .find(|char: char| !char.is_whitespace())
+            .unwrap_or(result.len());
+        result.drain(..non_whitespace_index);
     }
-    let non_whitespace_index = result
-        .find(|char: char| !char.is_whitespace())
-        .unwrap_or(result.len());
-    result.drain(..non_whitespace_index);
 
     if result.is_empty() {
         return username.into();
