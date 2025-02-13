@@ -13,6 +13,8 @@ pub struct PterodactylServer {
     pub name: String,
     pub display_name: String,
     pub category: PterodactylServerCategory,
+    #[serde(default)]
+    pub allow_commands: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
@@ -31,10 +33,10 @@ impl PterodactylServerCategory {
         *self != Self::OtherTechServer
     }
 
-    pub fn is_proto_minecraft(&self) -> bool {
+    pub fn is_minecraft(&self) -> bool {
         match self {
-            Self::Smp | Self::Cmp | Self::Copy | Self::Patreon => true,
-            Self::Protobot | Self::OtherTechServer => false,
+            Self::Smp | Self::Cmp | Self::Copy | Self::Patreon | Self::OtherTechServer => true,
+            Self::Protobot => false,
         }
     }
 

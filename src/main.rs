@@ -147,7 +147,7 @@ fn main() {
         != Some(true)
     {
         for server in config::get().pterodactyl_servers.iter().cloned() {
-            if server.category.is_proto_minecraft() {
+            if server.category.is_minecraft() {
                 let protobot_data = protobot_data.clone();
                 runtime.spawn(async move {
                     let server_name = server.name.clone();
