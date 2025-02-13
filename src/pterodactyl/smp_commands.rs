@@ -15,6 +15,7 @@ use pterodactyl_api::client::ServerState;
 use serenity::builder::ExecuteWebhook;
 use serenity::model::webhook::Webhook;
 use std::borrow::Cow;
+use std::sync::Arc;
 
 pub(crate) async fn create_backup(
     server: &pterodactyl_api::client::Server<'_>,
@@ -54,8 +55,7 @@ pub(crate) async fn create_backup(
     Ok(backup)
 }
 
-async fn handle_chat_message<H: PteroWebSocketHandle>(
-    handle: &mut H,
+async fn handle_chat_message(
     data: &ProtobotData,
     webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
@@ -79,28 +79,28 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
             match args[0] {
                 "s" => {
                     if args.len() > 1 {
-                        handle
+                        ptero_server
                             .send_command(&format!(
                                 "scoreboard objectives setdisplay sidebar {}",
                                 args[1]
                             ))
                             .await?;
                     } else {
-                        handle
+                        ptero_server
                             .send_command("scoreboard objectives setdisplay sidebar")
                             .await?;
                     }
                 }
                 "t" => {
                     if args.len() > 1 {
-                        handle
+                        ptero_server
                             .send_command(&format!(
                                 "scoreboard objectives setdisplay list {}",
                                 args[1]
                             ))
                             .await?;
                     } else {
-                        handle
+                        ptero_server
                             .send_command("scoreboard objectives setdisplay list")
                             .await?;
                     }
@@ -115,7 +115,7 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
                         },
                     )
                     .await?;
-                    handle
+                    ptero_server
                         .send_command(
                             "tellraw @a \"Backup being created. Wait a minute to be sure the backup has finished\"",
                         )
@@ -173,8 +173,7 @@ async fn handle_log_message(
     Ok(())
 }
 
-async fn handle_server_log<H: PteroWebSocketHandle>(
-    handle: &mut H,
+async fn handle_server_log(
     data: &ProtobotData,
     webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
@@ -201,7 +200,6 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
     .finish();
     if let Ok((_, (sender, message))) = parse_result {
         handle_chat_message(
-            handle,
             data,
             webhook_cache,
             ptero_server_id,
@@ -388,29 +386,34 @@ fn sanitize_username(username: &str, remove_team_prefix: bool) -> Cow<str> {
 struct WebsocketListener<'a> {
     data: ProtobotData,
     ptero_server_id: &'a str,
-    ptero_server: pterodactyl_api::client::Server<'a>,
     last_server_status: Option<ServerState>,
-    webhook_cache: DashMap<String, Webhook>,
+    webhook_cache: Arc<DashMap<String, Webhook>>,
 }
 
 impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_> {
     async fn on_console_output(
         &mut self,
-        handle: &mut H,
+        _handle: &mut H,
         output: &str,
     ) -> pterodactyl_api::Result<()> {
-        if let Err(err) = handle_server_log(
-            handle,
-            &self.data,
-            &self.webhook_cache,
-            self.ptero_server_id,
-            &self.ptero_server,
-            output,
-        )
-        .await
-        {
-            error!("Error handling console output: {}", err);
-        }
+        let output = output.to_owned();
+        let data = self.data.clone();
+        let ptero_server_id = self.ptero_server_id.to_owned();
+        let webhook_cache = self.webhook_cache.clone();
+        tokio::runtime::Handle::current().spawn(async move {
+            let ptero_server = data.pterodactyl.get_server(&ptero_server_id);
+            if let Err(err) = handle_server_log(
+                &data,
+                &webhook_cache,
+                &ptero_server_id,
+                &ptero_server,
+                &output,
+            )
+            .await
+            {
+                error!("Error handling console output: {}", err);
+            }
+        });
         Ok(())
     }
 
@@ -431,19 +434,25 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
             ServerState::Running => "Server started",
             ServerState::Stopping => "Server stopping",
         };
-        if let Err(err) = broadcast_message(
-            &self.data.discord_handle,
-            &self.data.pterodactyl,
-            &self.webhook_cache,
-            self.ptero_server_id,
-            None,
-            true,
-            message,
-        )
-        .await
-        {
-            error!("Error handling server status: {}", err);
-        }
+
+        let data = self.data.clone();
+        let webhook_cache = self.webhook_cache.clone();
+        let ptero_server_id = self.ptero_server_id.to_owned();
+        tokio::runtime::Handle::current().spawn(async move {
+            if let Err(err) = broadcast_message(
+                &data.discord_handle,
+                &data.pterodactyl,
+                &webhook_cache,
+                &ptero_server_id,
+                None,
+                true,
+                message,
+            )
+            .await
+            {
+                error!("Error handling server status: {}", err);
+            }
+        });
         Ok(())
     }
 }
@@ -453,9 +462,8 @@ pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> Result
     let listener = WebsocketListener {
         data: data.clone(),
         ptero_server_id: &server.id,
-        ptero_server: data.pterodactyl.get_server(&server.id),
         last_server_status: None,
-        webhook_cache: DashMap::new(),
+        webhook_cache: Arc::new(DashMap::new()),
     };
     let ptero_server = data.pterodactyl.get_server(&server.id);
     tokio::select! {
