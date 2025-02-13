@@ -272,7 +272,7 @@ async fn broadcast_message(
         discord_sender += " [System]";
     }
     if let Some(username) = username {
-        discord_sender += &format!(" [{username}]");
+        discord_sender += &format!(" {username}");
     }
     try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
         broadcast_to_discord(
