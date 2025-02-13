@@ -363,7 +363,7 @@ fn sanitize_username(username: &str) -> Cow<str> {
     }
     let non_whitespace_index = result
         .find(|char: char| !char.is_whitespace())
-        .unwrap_or_else(|| result.len());
+        .unwrap_or(result.len());
     result.drain(..non_whitespace_index);
 
     if result.is_empty() {
