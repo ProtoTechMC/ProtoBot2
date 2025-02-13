@@ -119,8 +119,8 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
             &data.pterodactyl,
             webhook_cache,
             ptero_server_id,
-            sender,
             Some(sender),
+            false,
             message,
         )
         .await?;
@@ -144,8 +144,8 @@ async fn handle_log_message(
                 &data.pterodactyl,
                 webhook_cache,
                 ptero_server_id,
-                &format!("[System] {sanitized_username}"),
                 Some(&sanitized_username),
+                true,
                 &message,
             )
             .await?;
@@ -223,8 +223,8 @@ async fn broadcast_message(
     pterodactyl: &pterodactyl_api::client::Client,
     webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
-    sender: &str,
     username: Option<&str>,
+    system_message: bool,
     message: &str,
 ) -> Result<(), crate::Error> {
     let config = config::get();
@@ -239,6 +239,14 @@ async fn broadcast_message(
     let Some(chat_bridge) = config.chat_bridge_by_ptero_server_name(&from_server.name) else {
         return Ok(());
     };
+    let mut pterodactyl_message = format!("[{}] ", from_server.display_name);
+    if system_message {
+        pterodactyl_message += "[System] ";
+    }
+    if let Some(username) = username {
+        pterodactyl_message += &format!("[{username}] ");
+    }
+    pterodactyl_message += message;
     try_join_all(
         chat_bridge
             .ptero_servers
@@ -254,22 +262,24 @@ async fn broadcast_message(
                     return None;
                 };
                 Some(async {
-                    tellraw(
-                        &pterodactyl.get_server(&server.id),
-                        format!("[{}] [{}] {}", from_server.display_name, sender, message),
-                    )
-                    .await
+                    tellraw(&pterodactyl.get_server(&server.id), &pterodactyl_message).await
                 })
             }),
     )
     .await?;
+    let mut discord_sender = format!("[{}]", from_server.display_name);
+    if system_message {
+        discord_sender += " [System]";
+    }
+    if let Some(username) = username {
+        discord_sender += &format!(" [{username}]");
+    }
     try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
         broadcast_to_discord(
             discord_handle,
             webhook_cache,
             &channel.webhook,
-            &from_server.display_name,
-            sender,
+            &discord_sender,
             username,
             message,
         )
@@ -282,9 +292,8 @@ async fn broadcast_to_discord(
     discord_handle: &discord_bot::Handle,
     webhook_cache: &DashMap<String, Webhook>,
     webhook: &str,
-    server_display_name: &str,
     sender: &str,
-    username: Option<&str>,
+    avatar_username: Option<&str>,
     message: &str,
 ) -> Result<(), crate::Error> {
     let webhook = match webhook_cache.entry(webhook.to_owned()) {
@@ -293,10 +302,8 @@ async fn broadcast_to_discord(
             .insert(Webhook::from_url(discord_handle, webhook).await?)
             .clone(),
     };
-    let mut execute_webhook = ExecuteWebhook::new()
-        .content(message)
-        .username(format!("[{server_display_name}] {sender}"));
-    if let Some(username) = username {
+    let mut execute_webhook = ExecuteWebhook::new().content(message).username(sender);
+    if let Some(username) = avatar_username {
         execute_webhook = execute_webhook.avatar_url(avatar_url(username));
     }
     webhook
@@ -382,8 +389,8 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
             &self.data.pterodactyl,
             &self.webhook_cache,
             self.ptero_server_id,
-            "[System]",
             None,
+            true,
             message,
         )
         .await
