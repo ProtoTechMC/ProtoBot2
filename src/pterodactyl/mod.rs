@@ -1,5 +1,5 @@
 use pterodactyl_api::client::ServerState;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serenity::model::id::ChannelId;
 use std::collections::BTreeMap;
 
@@ -11,9 +11,8 @@ pub mod whitelist;
 pub struct PterodactylServer {
     pub id: String,
     pub name: String,
+    pub display_name: String,
     pub category: PterodactylServerCategory,
-    #[serde(default)]
-    pub bridge: Option<PterodactylChatBridge>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
@@ -24,13 +23,18 @@ pub enum PterodactylServerCategory {
     Copy,
     Patreon,
     Protobot,
+    OtherTechServer,
 }
 
 impl PterodactylServerCategory {
-    pub fn is_minecraft(&self) -> bool {
+    pub fn is_proto(&self) -> bool {
+        *self != Self::OtherTechServer
+    }
+
+    pub fn is_proto_minecraft(&self) -> bool {
         match self {
             Self::Smp | Self::Cmp | Self::Copy | Self::Patreon => true,
-            Self::Protobot => false,
+            Self::Protobot | Self::OtherTechServer => false,
         }
     }
 
@@ -97,7 +101,13 @@ impl PterodactylPerms {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PterodactylChatBridge {
-    pub discord_channel: ChannelId,
+    pub discord_channels: Vec<PterodactylChatBridgeDiscordChannel>,
+    pub ptero_servers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PterodactylChatBridgeDiscordChannel {
+    pub id: ChannelId,
     pub webhook: String,
 }
 
@@ -111,4 +121,18 @@ pub async fn send_command_safe(
         }
     }
     Ok(())
+}
+
+pub async fn tellraw(
+    server: &pterodactyl_api::client::Server<'_>,
+    message: impl Into<String>,
+) -> Result<(), crate::Error> {
+    #[derive(Serialize)]
+    struct TextComponent {
+        text: String,
+    }
+    let text_component = serde_json::to_string(&TextComponent {
+        text: message.into(),
+    })?;
+    send_command_safe(server, format!("tellraw @a {text_component}")).await
 }

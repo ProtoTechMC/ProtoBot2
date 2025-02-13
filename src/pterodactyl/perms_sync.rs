@@ -9,22 +9,32 @@ pub(crate) async fn run(
     data: &ProtobotData,
     mut args: impl Iterator<Item = &str>,
 ) -> Result<(), crate::Error> {
-    let Some(server) = args.next() else {
+    let Some(server_name) = args.next() else {
         error!("Missing server argument");
         return Ok(());
     };
 
     let config = config::get();
 
-    if server == "all" {
+    if server_name == "all" {
         for server in &config.pterodactyl_servers {
-            run_on_server(data, server).await?;
+            if server.category.is_proto() {
+                run_on_server(data, server).await?;
+            }
         }
     } else {
-        let Some(server) = config.pterodactyl_servers.iter().find(|s| s.name == server) else {
-            error!("Unknown server: {}", server);
+        let Some(server) = config
+            .pterodactyl_servers
+            .iter()
+            .find(|s| s.name == server_name)
+        else {
+            error!("Unknown server: {}", server_name);
             return Ok(());
         };
+        if !server.category.is_proto() {
+            error!("Cannot run perms sync on non-proto server: {}", server_name);
+            return Ok(());
+        }
         run_on_server(data, server).await?;
     }
 

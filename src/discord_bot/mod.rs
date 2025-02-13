@@ -15,13 +15,15 @@ mod update_copy;
 
 use crate::config;
 use crate::discord_bot::guild_storage::GuildStorage;
-use crate::pterodactyl::{send_command_safe, PterodactylServer};
+use crate::pterodactyl::{tellraw, PterodactylChatBridge, PterodactylServer};
 use async_trait::async_trait;
+use dashmap::{DashMap, Entry};
+use futures::future::try_join_all;
 use log::{error, info, warn};
-use serde::Serialize;
+use serenity::all::Webhook;
 use serenity::builder::{
-    CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse,
+    CreateAttachment, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage,
+    CreateMessage, EditInteractionResponse, ExecuteWebhook,
 };
 use serenity::client::{Context, EventHandler};
 use serenity::http::Http;
@@ -39,6 +41,7 @@ use std::sync::Arc;
 pub(crate) type Handle = Arc<Http>;
 
 struct Handler {
+    webhook_cache: Arc<DashMap<String, Webhook>>,
     pterodactyl: Arc<pterodactyl_api::client::Client>,
 }
 
@@ -119,42 +122,113 @@ async fn process_command(
 
 async fn process_chatbridge(
     ctx: Context,
+    webhook_cache: &DashMap<String, Webhook>,
     pterodactyl: &pterodactyl_api::client::Client,
-    chatbridge_server: &PterodactylServer,
+    chat_bridge: &PterodactylChatBridge,
     new_message: &Message,
 ) -> Result<(), crate::Error> {
-    let ptero_server = pterodactyl.get_server(&chatbridge_server.id);
+    let config = config::get();
+    try_join_all(
+        chat_bridge
+            .ptero_servers
+            .iter()
+            .filter_map(|server_name| {
+                config
+                    .pterodactyl_servers
+                    .iter()
+                    .find(|server| &server.name == server_name)
+            })
+            .map(|server| send_chatbridge_message(&ctx, pterodactyl, server, new_message)),
+    )
+    .await?;
+    try_join_all(
+        chat_bridge
+            .discord_channels
+            .iter()
+            .filter(|channel| channel.id != new_message.channel_id)
+            .map(|channel| {
+                send_chatbridge_message_to_discord(
+                    &ctx,
+                    webhook_cache,
+                    &channel.webhook,
+                    new_message,
+                )
+            }),
+    )
+    .await?;
+    Ok(())
+}
 
-    #[derive(Serialize)]
-    struct TextComponent {
-        text: String,
-    }
+async fn send_chatbridge_message(
+    ctx: &Context,
+    pterodactyl: &pterodactyl_api::client::Client,
+    server: &PterodactylServer,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let ptero_server = pterodactyl.get_server(&server.id);
 
-    let sanitized_message = new_message.content_safe(&ctx);
+    let sanitized_message = message.content_safe(ctx);
     if !sanitized_message.is_empty() {
-        let text_component = TextComponent {
-            text: format!("[{}] {}", new_message.author.name, sanitized_message),
-        };
-        let text_component = serde_json::to_string(&text_component)?;
-        send_command_safe(&ptero_server, format!("tellraw @a {}", text_component)).await?;
+        tellraw(
+            &ptero_server,
+            format!("[Discord] [{}] {}", message.author.name, sanitized_message),
+        )
+        .await?;
     }
 
-    if !new_message.attachments.is_empty() {
-        let attachment_message = if new_message.attachments.len() == 1 {
+    if !message.attachments.is_empty() {
+        let attachment_message = if message.attachments.len() == 1 {
             "an attachment"
         } else {
             "multiple attachments"
         };
-        let text_component = TextComponent {
-            text: format!(
+        tellraw(
+            &ptero_server,
+            format!(
                 "{} posted {} in Discord.",
-                new_message.author.name, attachment_message
+                message.author.name, attachment_message
             ),
-        };
-        let text_component = serde_json::to_string(&text_component)?;
-        send_command_safe(&ptero_server, format!("tellraw @a {}", text_component)).await?;
+        )
+        .await?;
     }
 
+    Ok(())
+}
+
+async fn send_chatbridge_message_to_discord(
+    ctx: &Context,
+    webhook_cache: &DashMap<String, Webhook>,
+    webhook: &str,
+    message: &Message,
+) -> Result<(), crate::Error> {
+    let webhook = match webhook_cache.entry(webhook.to_owned()) {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => entry.insert(Webhook::from_url(ctx, webhook).await?).clone(),
+    };
+    webhook
+        .execute(
+            ctx,
+            false,
+            ExecuteWebhook::new()
+                .content(&message.content)
+                .files(
+                    try_join_all(
+                        message
+                            .attachments
+                            .iter()
+                            .map(|attachment| CreateAttachment::url(ctx, &attachment.url)),
+                    )
+                    .await?,
+                )
+                .username(&message.author.name)
+                .avatar_url(
+                    message
+                        .author
+                        .avatar_url()
+                        .unwrap_or_else(|| message.author.default_avatar_url()),
+                ),
+        )
+        .await?;
     Ok(())
 }
 
@@ -211,10 +285,11 @@ impl EventHandler for Handler {
             None => return,
         };
         let pterodactyl = self.pterodactyl.clone();
+        let webhook_cache = self.webhook_cache.clone();
 
         tokio::runtime::Handle::current().spawn(async move {
             enum MessageHandling<'a> {
-                ChatBridge(&'a PterodactylServer),
+                ChatBridge(&'a PterodactylChatBridge),
                 Command(&'a str),
                 IncCounter(&'a str),
                 PermanentLatest,
@@ -228,15 +303,10 @@ impl EventHandler for Handler {
                     MessageHandling::SimpleWords
                 } else if new_message.author.bot {
                     return;
-                } else if let Some(chatbridge_server) =
-                    config.pterodactyl_servers.iter().find(|server| {
-                        server
-                            .bridge
-                            .as_ref()
-                            .is_some_and(|bridge| bridge.discord_channel == new_message.channel_id)
-                    })
+                } else if let Some(chat_bridge) =
+                    config.chat_bridge_by_discord_channel(new_message.channel_id)
                 {
-                    MessageHandling::ChatBridge(chatbridge_server)
+                    MessageHandling::ChatBridge(chat_bridge)
                 } else {
                     let storage = GuildStorage::get(guild_id).await;
                     if storage
@@ -264,7 +334,14 @@ impl EventHandler for Handler {
 
             if let Err(err) = match message_handling {
                 MessageHandling::ChatBridge(chatbridge_server) => {
-                    process_chatbridge(ctx, &pterodactyl, chatbridge_server, &new_message).await
+                    process_chatbridge(
+                        ctx,
+                        &webhook_cache,
+                        &pterodactyl,
+                        chatbridge_server,
+                        &new_message,
+                    )
+                    .await
                 }
                 MessageHandling::Command(command) => {
                     commands::run(command, guild_id, ctx, &new_message).await
@@ -380,7 +457,10 @@ pub(crate) async fn create_client(
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MESSAGE_REACTIONS;
     Ok(Client::builder(&config::get().discord_token, intents)
-        .event_handler(Handler { pterodactyl })
+        .event_handler(Handler {
+            webhook_cache: Arc::new(DashMap::new()),
+            pterodactyl,
+        })
         .await?)
 }
 

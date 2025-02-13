@@ -66,7 +66,7 @@ pub(crate) async fn run(
                 error!("Unknown category {}", category);
                 return Ok(());
             };
-            if !category.is_minecraft() {
+            if !category.is_proto_minecraft() {
                 error!("Can only whitelist on Minecraft servers");
                 return Ok(());
             }
@@ -92,7 +92,7 @@ where
             .pterodactyl_servers
             .iter()
             .map(|server| server.category)
-            .filter(PterodactylServerCategory::is_minecraft)
+            .filter(PterodactylServerCategory::is_proto_minecraft)
             .collect();
         try_join_all(categories.into_iter().map(whitelist_operation)).await?;
     } else {
@@ -102,7 +102,7 @@ where
             error!("Unknown category {}", category);
             return Ok(());
         };
-        if !category.is_minecraft() {
+        if !category.is_proto_minecraft() {
             error!("Can only whitelist on Minecraft servers");
             return Ok(());
         }

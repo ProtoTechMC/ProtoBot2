@@ -1,6 +1,8 @@
-use crate::pterodactyl::PterodactylServer;
-use crate::ProtobotData;
-use log::{error, info};
+use crate::pterodactyl::{tellraw, PterodactylServer};
+use crate::{config, discord_bot, ProtobotData};
+use dashmap::{DashMap, Entry};
+use futures::future::try_join_all;
+use log::{error, info, warn};
 use nom::bytes::complete::{tag, take_until1};
 use nom::character::complete::{anychar, char, digit1};
 use nom::combinator::{map, recognize};
@@ -9,6 +11,7 @@ use nom::sequence::tuple;
 use nom::Finish;
 use pterodactyl_api::client::backups::{Backup, BackupParams};
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
+use pterodactyl_api::client::ServerState;
 use serenity::builder::ExecuteWebhook;
 use serenity::model::webhook::Webhook;
 use std::borrow::Cow;
@@ -54,7 +57,8 @@ pub(crate) async fn create_backup(
 async fn handle_chat_message<H: PteroWebSocketHandle>(
     handle: &mut H,
     data: &ProtobotData,
-    chat_bridge_webhook: Option<&Webhook>,
+    webhook_cache: &DashMap<String, Webhook>,
+    ptero_server_id: &str,
     ptero_server: &pterodactyl_api::client::Server<'_>,
     sender: &str,
     message: &str,
@@ -109,17 +113,17 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
             }
             _ => {}
         }
-    } else if let Some(chat_bridge_webhook) = chat_bridge_webhook {
-        chat_bridge_webhook
-            .execute(
-                &data.discord_handle,
-                false,
-                ExecuteWebhook::new()
-                    .content(message)
-                    .username(sender)
-                    .avatar_url(avatar_url(sender)),
-            )
-            .await?;
+    } else {
+        broadcast_message(
+            &data.discord_handle,
+            &data.pterodactyl,
+            webhook_cache,
+            ptero_server_id,
+            sender,
+            Some(sender),
+            message,
+        )
+        .await?;
     }
 
     Ok(())
@@ -127,25 +131,24 @@ async fn handle_chat_message<H: PteroWebSocketHandle>(
 
 async fn handle_log_message(
     data: &ProtobotData,
-    chat_bridge_webhook: Option<&Webhook>,
+    webhook_cache: &DashMap<String, Webhook>,
+    ptero_server_id: &str,
     message: &str,
 ) -> Result<(), crate::Error> {
-    if let Some(chat_bridge_webhook) = chat_bridge_webhook {
-        if let Some((username, action)) = message.split_once(' ') {
-            if action == "joined the game" || action == "left the game" {
-                let sanitized_username = sanitize_username(username);
-                let sanitized_message = format!("{} {}", sanitized_username, action);
-                chat_bridge_webhook
-                    .execute(
-                        &data.discord_handle,
-                        false,
-                        ExecuteWebhook::new()
-                            .content(sanitized_message)
-                            .username(format!("[System] {sanitized_username}"))
-                            .avatar_url(avatar_url(&sanitized_username)),
-                    )
-                    .await?;
-            }
+    if let Some((username, action)) = message.split_once(' ') {
+        if action == "joined the game" || action == "left the game" {
+            let sanitized_username = sanitize_username(username);
+            let message = format!("{} {}", sanitized_username, action);
+            broadcast_message(
+                &data.discord_handle,
+                &data.pterodactyl,
+                webhook_cache,
+                ptero_server_id,
+                &format!("[System] {sanitized_username}"),
+                Some(&sanitized_username),
+                &message,
+            )
+            .await?;
         }
     }
 
@@ -155,7 +158,8 @@ async fn handle_log_message(
 async fn handle_server_log<H: PteroWebSocketHandle>(
     handle: &mut H,
     data: &ProtobotData,
-    chat_bridge_webhook: Option<&Webhook>,
+    webhook_cache: &DashMap<String, Webhook>,
+    ptero_server_id: &str,
     ptero_server: &pterodactyl_api::client::Server<'_>,
     message: &str,
 ) -> Result<(), crate::Error> {
@@ -181,7 +185,8 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
         handle_chat_message(
             handle,
             data,
-            chat_bridge_webhook,
+            webhook_cache,
+            ptero_server_id,
             ptero_server,
             &sanitize_username(sender),
             message,
@@ -207,9 +212,96 @@ async fn handle_server_log<H: PteroWebSocketHandle>(
     )(message)
     .finish();
     if let Ok((_, log_message)) = parse_result {
-        handle_log_message(data, chat_bridge_webhook, log_message).await?;
+        handle_log_message(data, webhook_cache, ptero_server_id, log_message).await?;
     }
 
+    Ok(())
+}
+
+async fn broadcast_message(
+    discord_handle: &discord_bot::Handle,
+    pterodactyl: &pterodactyl_api::client::Client,
+    webhook_cache: &DashMap<String, Webhook>,
+    ptero_server_id: &str,
+    sender: &str,
+    username: Option<&str>,
+    message: &str,
+) -> Result<(), crate::Error> {
+    let config = config::get();
+    let Some(from_server) = config
+        .pterodactyl_servers
+        .iter()
+        .find(|server| server.id == ptero_server_id)
+    else {
+        warn!("Unknown server {}", ptero_server_id);
+        return Ok(());
+    };
+    let Some(chat_bridge) = config.chat_bridge_by_ptero_server_name(&from_server.name) else {
+        return Ok(());
+    };
+    try_join_all(
+        chat_bridge
+            .ptero_servers
+            .iter()
+            .filter(|server_name| **server_name != from_server.name)
+            .filter_map(|server_name| {
+                let Some(server) = config
+                    .pterodactyl_servers
+                    .iter()
+                    .find(|server| &server.name == server_name)
+                else {
+                    // warning already displayed on config load
+                    return None;
+                };
+                Some(async {
+                    tellraw(
+                        &pterodactyl.get_server(&server.id),
+                        format!("[{}] [{}] {}", from_server.display_name, sender, message),
+                    )
+                    .await
+                })
+            }),
+    )
+    .await?;
+    try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
+        broadcast_to_discord(
+            discord_handle,
+            webhook_cache,
+            &channel.webhook,
+            &from_server.display_name,
+            sender,
+            username,
+            message,
+        )
+    }))
+    .await?;
+    Ok(())
+}
+
+async fn broadcast_to_discord(
+    discord_handle: &discord_bot::Handle,
+    webhook_cache: &DashMap<String, Webhook>,
+    webhook: &str,
+    server_display_name: &str,
+    sender: &str,
+    username: Option<&str>,
+    message: &str,
+) -> Result<(), crate::Error> {
+    let webhook = match webhook_cache.entry(webhook.to_owned()) {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => entry
+            .insert(Webhook::from_url(discord_handle, webhook).await?)
+            .clone(),
+    };
+    let mut execute_webhook = ExecuteWebhook::new()
+        .content(message)
+        .username(format!("[{server_display_name}] {sender}"));
+    if let Some(username) = username {
+        execute_webhook = execute_webhook.avatar_url(avatar_url(username));
+    }
+    webhook
+        .execute(discord_handle, false, execute_webhook)
+        .await?;
     Ok(())
 }
 
@@ -241,8 +333,10 @@ fn sanitize_username(username: &str) -> Cow<str> {
 
 struct WebsocketListener<'a> {
     data: ProtobotData,
+    ptero_server_id: &'a str,
     ptero_server: pterodactyl_api::client::Server<'a>,
-    chat_bridge_webhook: Option<Webhook>,
+    last_server_status: Option<ServerState>,
+    webhook_cache: DashMap<String, Webhook>,
 }
 
 impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_> {
@@ -254,7 +348,8 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
         if let Err(err) = handle_server_log(
             handle,
             &self.data,
-            self.chat_bridge_webhook.as_ref(),
+            &self.webhook_cache,
+            self.ptero_server_id,
             &self.ptero_server,
             output,
         )
@@ -264,18 +359,49 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
         }
         Ok(())
     }
+
+    async fn on_status(
+        &mut self,
+        _handle: &mut H,
+        status: ServerState,
+    ) -> pterodactyl_api::Result<()> {
+        let last_status = self.last_server_status;
+        self.last_server_status = Some(status);
+        if last_status.is_none_or(|last_status| last_status == status) {
+            return Ok(());
+        }
+
+        let message = match status {
+            ServerState::Offline => "Server stopped",
+            ServerState::Starting => "Server starting",
+            ServerState::Running => "Server started",
+            ServerState::Stopping => "Server stopping",
+        };
+        if let Err(err) = broadcast_message(
+            &self.data.discord_handle,
+            &self.data.pterodactyl,
+            &self.webhook_cache,
+            self.ptero_server_id,
+            "[System]",
+            None,
+            message,
+        )
+        .await
+        {
+            error!("Error handling server status: {}", err);
+        }
+        Ok(())
+    }
 }
 
 pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> Result<(), crate::Error> {
     info!("Starting websocket for server {}", server.name);
-    let chat_bridge_webhook = match &server.bridge {
-        Some(bridge) => Some(Webhook::from_url(&data.discord_handle, &bridge.webhook).await?),
-        None => None,
-    };
     let listener = WebsocketListener {
         data: data.clone(),
+        ptero_server_id: &server.id,
         ptero_server: data.pterodactyl.get_server(&server.id),
-        chat_bridge_webhook,
+        last_server_status: None,
+        webhook_cache: DashMap::new(),
     };
     let ptero_server = data.pterodactyl.get_server(&server.id);
     tokio::select! {

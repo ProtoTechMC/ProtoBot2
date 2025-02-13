@@ -93,7 +93,7 @@ struct ApplicationEmbeds<'a> {
     embeds: Vec<ApplicationEmbed<'a>>,
 }
 
-impl<'a> ApplicationEmbeds<'a> {
+impl ApplicationEmbeds<'_> {
     fn create(app: Application) -> Self {
         let (actual_questions, meta_questions): (Vec<_>, Vec<_>) = app
             .items
@@ -268,7 +268,7 @@ struct ApplicationEmbed<'a> {
     fields: Vec<ApplicationField<'a>>,
 }
 
-impl<'a> ApplicationEmbed<'a> {
+impl ApplicationEmbed<'_> {
     fn char_count(&self) -> usize {
         self.title.len()
             + self.author.len()
@@ -286,7 +286,7 @@ struct ApplicationField<'a> {
     value: Cow<'a, str>,
 }
 
-impl<'a> ApplicationField<'a> {
+impl ApplicationField<'_> {
     fn char_count(&self) -> usize {
         self.title.len() + self.value.len()
     }
