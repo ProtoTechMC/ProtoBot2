@@ -293,7 +293,11 @@ async fn broadcast_message(
         discord_sender += &format!(" {username}");
     }
     if discord_sender.len() > 32 {
-        discord_sender.truncate(29);
+        let mut new_len = 29;
+        while !discord_sender.is_char_boundary(new_len) {
+            new_len -= 1;
+        }
+        discord_sender.truncate(new_len);
         discord_sender += "...";
     }
     try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
