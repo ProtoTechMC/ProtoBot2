@@ -134,7 +134,7 @@ async fn handle_chat_message(
         ptero_server_id,
         Some(sender),
         false,
-        message,
+        message.to_owned(),
     )
     .await?;
 
@@ -165,7 +165,7 @@ async fn handle_log_message(
             ptero_server_id,
             Some(&sanitized_username),
             true,
-            &message,
+            message,
         )
         .await?;
     }
@@ -241,7 +241,7 @@ async fn broadcast_message(
     ptero_server_id: &str,
     username: Option<&str>,
     system_message: bool,
-    message: &str,
+    message: String,
 ) -> Result<(), crate::Error> {
     let config = config::get();
     let Some(from_server) = config
@@ -255,6 +255,8 @@ async fn broadcast_message(
     let Some(chat_bridge) = config.chat_bridge_by_ptero_server_name(&from_server.name) else {
         return Ok(());
     };
+
+    // send to other pterodactyl servers
     let mut pterodactyl_message = format!("[{}] ", from_server.display_name);
     if system_message {
         pterodactyl_message += "[System] ";
@@ -262,7 +264,7 @@ async fn broadcast_message(
     if let Some(username) = username {
         pterodactyl_message += &format!("[{username}] ");
     }
-    pterodactyl_message += message;
+    pterodactyl_message += &message;
     try_join_all(
         chat_bridge
             .ptero_servers
@@ -283,6 +285,8 @@ async fn broadcast_message(
             }),
     )
     .await?;
+
+    // send to discord
     let mut discord_sender = format!("[{}]", from_server.display_name);
     if system_message {
         discord_sender += " [System]";
@@ -298,6 +302,20 @@ async fn broadcast_message(
         discord_sender.truncate(new_len);
         discord_sender += "...";
     }
+    // escape special chars in discord message for system messages
+    let discord_message = if system_message {
+        message
+            .chars()
+            .fold(String::with_capacity(message.len()), |mut s, c| {
+                if !c.is_alphanumeric() {
+                    s.push('\\');
+                }
+                s.push(c);
+                s
+            })
+    } else {
+        message
+    };
     try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
         broadcast_to_discord(
             discord_handle,
@@ -305,7 +323,7 @@ async fn broadcast_message(
             &channel.webhook,
             &discord_sender,
             username,
-            message,
+            &discord_message,
         )
     }))
     .await?;
@@ -446,7 +464,7 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
                 &ptero_server_id,
                 None,
                 true,
-                message,
+                message.to_owned(),
             )
             .await
             {
