@@ -307,7 +307,7 @@ async fn broadcast_message(
         message
             .chars()
             .fold(String::with_capacity(message.len()), |mut s, c| {
-                if !c.is_alphanumeric() {
+                if !c.is_alphanumeric() && !c.is_whitespace() {
                     s.push('\\');
                 }
                 s.push(c);
