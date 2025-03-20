@@ -363,7 +363,7 @@ async fn len(
     ctx: Context,
     message: &Message,
 ) -> Result<(), crate::Error> {
-    message.reply(ctx, args.len().to_string()).await?;
+    message.reply(ctx, args.chars().count().to_string()).await?;
     Ok(())
 }
 
