@@ -1,8 +1,8 @@
+use crate::discord_bot::april_fools_channel::AprilFoolsChannel;
+use arpabet::phoneme::Phoneme;
+use arpabet::{load_cmudict, Polyphone};
 use std::collections::BTreeSet;
 use std::mem;
-use arpabet::{load_cmudict, Polyphone};
-use arpabet::phoneme::Phoneme;
-use crate::discord_bot::april_fools_channel::AprilFoolsChannel;
 
 const INVALID_HAIKU: &str = "Not quite a haiku
 Your rhythm is imperfect
@@ -46,8 +46,17 @@ impl AprilFoolsChannel for HaikuChannel {
         let syllable_count_2 = get_line_syllables(lines[1]);
         let syllable_count_3 = get_line_syllables(lines[2]);
 
-        if !syllable_count_1.contains(&5) || !syllable_count_2.contains(&7) || !syllable_count_3.contains(&5) {
-            return Some(format!("{}\nSyllable counts are: {}, {}, {}", INVALID_HAIKU, display_syllable_count(&syllable_count_1), display_syllable_count(&syllable_count_2), display_syllable_count(&syllable_count_3)));
+        if !syllable_count_1.contains(&5)
+            || !syllable_count_2.contains(&7)
+            || !syllable_count_3.contains(&5)
+        {
+            return Some(format!(
+                "{}\nSyllable counts are: {}, {}, {}",
+                INVALID_HAIKU,
+                display_syllable_count(&syllable_count_1),
+                display_syllable_count(&syllable_count_2),
+                display_syllable_count(&syllable_count_3)
+            ));
         }
 
         None
@@ -79,7 +88,10 @@ fn get_line_syllables(line: &str) -> BTreeSet<u32> {
     let mut next_result = BTreeSet::new();
 
     for word in line.split(|char: char| !char.is_ascii_alphabetic() && char != '\'') {
-        let word = word.trim_start_matches('\'').trim_end_matches('\'').to_ascii_lowercase();
+        let word = word
+            .trim_start_matches('\'')
+            .trim_end_matches('\'')
+            .to_ascii_lowercase();
         if word.is_empty() {
             continue;
         }
@@ -117,23 +129,28 @@ fn get_line_syllables(line: &str) -> BTreeSet<u32> {
 }
 
 fn check_word_cmu(polyphone: &Polyphone) -> u32 {
-    1.max(polyphone.iter().filter(|phoneme| matches!(phoneme, Phoneme::Vowel(_))).count() as u32)
+    1.max(
+        polyphone
+            .iter()
+            .filter(|phoneme| matches!(phoneme, Phoneme::Vowel(_)))
+            .count() as u32,
+    )
 }
 
 fn check_word_simple(word: &str) -> u32 {
     let word = word.as_bytes();
     let mut syllables = 0;
-    
+
     for i in 0..word.len() {
         let char = word[i];
         let prev_char = if i == 0 { b'_' } else { word[i - 1] };
-        
+
         if is_vowel(char) && !is_vowel(prev_char) && (char != b'e' || i != word.len() - 1) {
             syllables += 1;
         }
     }
-    
-    syllables
+
+    1.max(syllables)
 }
 
 fn is_vowel(c: u8) -> bool {
