@@ -1,8 +1,4 @@
-use serenity::builder::CreateMessage;
-use serenity::client::Context;
-use serenity::model::channel::MessageFlags;
-use serenity::model::id::{ChannelId, MessageId};
-use serenity::model::user::User;
+use crate::discord_bot::april_fools_channel::AprilFoolsChannel;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -10,41 +6,33 @@ fn top_10k_words() -> &'static HashSet<&'static str> {
     static TOP_10K_WORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
     TOP_10K_WORDS.get_or_init(|| {
         let mut set = HashSet::with_capacity(5000);
-        for word in include!("simple_writer_words.txt") {
+        for word in include!("../simple_writer_words.txt") {
             set.insert(word);
         }
         set
     })
 }
 
-pub(crate) async fn on_message(
-    ctx: Context,
-    has_attachments: bool,
-    content: &str,
-    author: &User,
-    channel_id: ChannelId,
-    message_id: MessageId,
-) -> Result<(), crate::Error> {
-    // find words in message
-    let mut error_message = None;
-    if has_attachments {
-        error_message = Some("Message has a picture".to_owned());
-    } else {
+pub(crate) struct SimpleWordsChannel;
+
+pub(crate) static CHANNEL: SimpleWordsChannel = SimpleWordsChannel;
+
+impl AprilFoolsChannel for SimpleWordsChannel {
+    fn get_error(&self, message: &str) -> Option<String> {
         let mut illegal_words = Vec::new();
         let mut current_word_start = None;
         let mut prev_char = None;
-        for (index, char) in content.char_indices() {
+        for (index, char) in message.char_indices() {
             if !char.is_ascii() && char != '’' {
-                error_message = Some("Message has a hard letter".to_owned());
-                break;
+                return Some("Message has a hard letter!".to_owned());
             }
-            if is_allowed_in_word(content, index, char, prev_char) {
+            if is_allowed_in_word(message, index, char, prev_char) {
                 if current_word_start.is_none() {
                     current_word_start = Some(index);
                 }
             } else if let Some(word_start) = current_word_start {
                 current_word_start = None;
-                let word = &content[word_start..index];
+                let word = &message[word_start..index];
                 if !is_word_allowed(word) {
                     illegal_words.push(word.to_ascii_lowercase());
                 }
@@ -52,15 +40,15 @@ pub(crate) async fn on_message(
             prev_char = Some(char);
         }
         if let Some(word_start) = current_word_start {
-            let word = &content[word_start..];
+            let word = &message[word_start..];
             if !is_word_allowed(word) {
                 illegal_words.push(word.to_ascii_lowercase());
             }
         }
-        if error_message.is_none() && !illegal_words.is_empty() {
+        if !illegal_words.is_empty() {
             illegal_words.dedup();
-            error_message = Some(format!(
-                "Message has the following hard words: {}",
+            return Some(format!(
+                "Message has the following hard words: {}!",
                 illegal_words
                     .into_iter()
                     .take(5)
@@ -69,31 +57,13 @@ pub(crate) async fn on_message(
                     .join(", ")
             ));
         }
+
+        None
     }
-    if let Some(error_message) = error_message {
-        channel_id.delete_message(&ctx, message_id).await?;
-        if !author.bot {
-            let dm_channel = author.create_dm_channel(&ctx).await?;
-            dm_channel
-                .send_message(
-                    &ctx,
-                    CreateMessage::new()
-                        .content(format!("{}! Your original message was:", error_message)),
-                )
-                .await?;
-            if !content.is_empty() {
-                dm_channel
-                    .send_message(
-                        ctx,
-                        CreateMessage::new()
-                            .content(content)
-                            .flags(MessageFlags::SUPPRESS_NOTIFICATIONS),
-                    )
-                    .await?;
-            }
-        }
+
+    fn has_attachment_message(&self) -> &'static str {
+        "Message has a picture!"
     }
-    Ok(())
 }
 
 fn is_allowed_in_word(whole: &str, index: usize, char: char, prev_char: Option<char>) -> bool {

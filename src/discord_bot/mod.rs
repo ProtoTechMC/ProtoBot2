@@ -1,3 +1,4 @@
+mod april_fools_channel;
 mod brainfuck;
 mod chess;
 mod commands;
@@ -8,12 +9,12 @@ mod permanent_latest;
 mod reaction_role_toggle;
 mod role;
 mod roletoggle;
-mod simple_words;
 mod storage;
 mod support;
 mod update_copy;
 
 use crate::config;
+use crate::discord_bot::april_fools_channel::{get_april_fools_channel, AprilFoolsChannel};
 use crate::discord_bot::guild_storage::GuildStorage;
 use crate::pterodactyl::{tellraw, PterodactylChatBridge, PterodactylServer};
 use async_trait::async_trait;
@@ -293,14 +294,14 @@ impl EventHandler for Handler {
                 Command(&'a str),
                 IncCounter(&'a str),
                 PermanentLatest,
-                SimpleWords,
+                AprilFools(&'static dyn AprilFoolsChannel),
             }
 
             let config = config::get();
 
             let message_handling = {
-                if config.special_channels.simple_words == Some(new_message.channel_id) {
-                    MessageHandling::SimpleWords
+                if let Some(april_fools_channel) = get_april_fools_channel(new_message.channel_id) {
+                    MessageHandling::AprilFools(april_fools_channel)
                 } else if new_message.author.bot {
                     return;
                 } else if let Some(chat_bridge) =
@@ -352,9 +353,10 @@ impl EventHandler for Handler {
                 MessageHandling::PermanentLatest => {
                     permanent_latest::on_message(guild_id, ctx, &new_message).await
                 }
-                MessageHandling::SimpleWords => {
-                    simple_words::on_message(
+                MessageHandling::AprilFools(april_fools) => {
+                    april_fools_channel::on_message(
                         ctx,
+                        april_fools,
                         !new_message.attachments.is_empty(),
                         &new_message.content,
                         &new_message.author,
@@ -380,10 +382,11 @@ impl EventHandler for Handler {
         event: MessageUpdateEvent,
     ) {
         enum MessageEditHandling {
-            SimpleWords,
+            AprilFools(&'static dyn AprilFoolsChannel),
         }
-        let handling = if config::get().special_channels.simple_words == Some(event.channel_id) {
-            MessageEditHandling::SimpleWords
+        let handling = if let Some(april_fools_channel) = get_april_fools_channel(event.channel_id)
+        {
+            MessageEditHandling::AprilFools(april_fools_channel)
         } else {
             return;
         };
@@ -395,9 +398,10 @@ impl EventHandler for Handler {
         };
         tokio::runtime::Handle::current().spawn(async move {
             if let Err(err) = match handling {
-                MessageEditHandling::SimpleWords => {
-                    simple_words::on_message(
+                MessageEditHandling::AprilFools(april_fools) => {
+                    april_fools_channel::on_message(
                         ctx,
+                        april_fools,
                         event
                             .attachments
                             .as_ref()
