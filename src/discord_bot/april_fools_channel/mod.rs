@@ -1,7 +1,8 @@
 use crate::config;
 use serenity::all::{ChannelId, Context, CreateMessage, MessageFlags, MessageId, User};
 
-pub mod simple_words;
+mod haiku;
+mod simple_words;
 
 pub(crate) fn get_april_fools_channel(
     channel_id: ChannelId,
@@ -10,6 +11,8 @@ pub(crate) fn get_april_fools_channel(
     let channels = &config.special_channels;
     if channels.simple_words == Some(channel_id) {
         Some(&simple_words::CHANNEL)
+    } else if channels.haiku == Some(channel_id) {
+        Some(&haiku::CHANNEL)
     } else {
         None
     }

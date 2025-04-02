@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arpabet = "2.0.0"
 async-trait = "0.1"
 async-tungstenite = { version = "0.28", features = ["tokio-runtime", "tokio-native-tls"] }
 chrono = "0.4"
