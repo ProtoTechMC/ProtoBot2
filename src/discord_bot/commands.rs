@@ -7,6 +7,7 @@ use chrono::Datelike;
 use log::info;
 use serde::Deserialize;
 use serenity::builder::{CreateAttachment, CreateEmbed, CreateEmbedFooter, CreateMessage};
+use serenity::cache::Cache;
 use serenity::client::Context;
 use serenity::model::channel::{ChannelType, Message};
 use serenity::model::id::GuildId;
@@ -130,11 +131,17 @@ async fn handle_custom_command(
     Ok(())
 }
 
-pub(super) async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
+pub(super) fn is_admin(ctx: impl AsRef<Cache>, message: &Message) -> bool {
     if let Some(permissions) = message.author_permissions(ctx) {
-        if permissions.contains(Permissions::ADMINISTRATOR) {
-            return Ok(true);
-        }
+        return permissions.contains(Permissions::ADMINISTRATOR);
+    }
+
+    false
+}
+
+pub(super) async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
+    if is_admin(ctx, message) {
+        return Ok(true);
     }
 
     message

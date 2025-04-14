@@ -125,7 +125,7 @@ fn run_brainfuck(brainfuck: Vec<char>, input: Vec<u8>) -> Result<Vec<u8>, Brainf
             if new_len > MEM_LIMIT {
                 return Err(BrainfuckError::OutOfMemory);
             }
-            mem.extend(std::iter::repeat(0).take((-idx) as usize));
+            mem.extend(std::iter::repeat_n(0, (-idx) as usize));
             mem.copy_within(0..old_len, (-idx) as usize);
             mem[0..(-idx) as usize].fill(0);
             Ok(0)
@@ -136,7 +136,7 @@ fn run_brainfuck(brainfuck: Vec<char>, input: Vec<u8>) -> Result<Vec<u8>, Brainf
                 if new_len > MEM_LIMIT {
                     return Err(BrainfuckError::OutOfMemory);
                 }
-                mem.extend(std::iter::repeat(0).take(additional_len as usize));
+                mem.extend(std::iter::repeat_n(0, additional_len as usize));
             }
             Ok(idx)
         }

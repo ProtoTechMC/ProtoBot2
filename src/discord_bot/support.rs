@@ -1,5 +1,5 @@
 use crate::config;
-use crate::discord_bot::commands::check_admin;
+use crate::discord_bot::commands::is_admin;
 use crate::discord_bot::guild_storage::GuildStorage;
 use futures::future::join_all;
 use serenity::builder::{CreateEmbed, CreateMessage};
@@ -67,7 +67,7 @@ async fn run_normal(
         now.unix_timestamp() - joined_at.unix_timestamp() <= MAX_SUPPORT_USED_ON_TIME
     }) != Some(true)
     {
-        if check_admin(&ctx, message).await? {
+        if is_admin(&ctx, message) {
             admin_override = true;
         } else {
             message
