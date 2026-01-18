@@ -9,6 +9,7 @@ mod permanent_latest;
 mod reaction_role_toggle;
 mod role;
 mod roletoggle;
+mod social_credit;
 mod storage;
 mod support;
 mod update_copy;

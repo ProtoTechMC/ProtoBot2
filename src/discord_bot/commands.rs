@@ -1,7 +1,7 @@
 use crate::discord_bot::guild_storage::GuildStorage;
 use crate::discord_bot::{
     brainfuck, chess, counter, mood, permanent_latest, reaction_role_toggle, role, roletoggle,
-    storage, support,
+    social_credit, storage, support,
 };
 use chrono::Datelike;
 use log::info;
@@ -72,6 +72,7 @@ declare_commands! {
     "reaction_roletoggle" => (reaction_role_toggle::run, "Adds a reaction role toggle"),
     "role" => (role::run, "Allows members to manage specified roles"),
     "roletoggle" => (roletoggle::run, "Adds a role toggle"),
+    "social_credit" => (social_credit::run, "Controls the social credit in this server"),
     "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
     "support" => (support::run, "Use on people who are asking for support without using the support channel"),
     "trick" => (trick, "Adds a trick"),

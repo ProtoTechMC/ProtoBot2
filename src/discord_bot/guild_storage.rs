@@ -45,6 +45,8 @@ pub struct GuildStorage {
     pub users_sent_to_support: HashSet<UserId>,
     #[serde(default)]
     pub counters: HashMap<String, u64>,
+    #[serde(default)]
+    pub social_credit: HashMap<UserId, i32>,
 }
 
 impl Default for GuildStorage {
@@ -62,6 +64,7 @@ impl Default for GuildStorage {
             send_to_support_leaderboard: HashMap::new(),
             users_sent_to_support: HashSet::new(),
             counters: HashMap::new(),
+            social_credit: HashMap::new(),
         }
     }
 }
