@@ -4,8 +4,8 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, one_of};
 use nom::combinator::{eof, map, not, opt, value};
-use nom::sequence::{pair, preceded, terminated, tuple};
-use nom::{Finish, IResult};
+use nom::sequence::{pair, preceded, terminated};
+use nom::{Finish, IResult, Parser};
 use serde::{Deserialize, Serialize};
 use serenity::builder::{CreateEmbed, CreateMessage};
 use serenity::client::Context;
@@ -1231,7 +1231,8 @@ struct Move {
 }
 
 fn parse_move(mov: &str) -> Result<Move, ()> {
-    alt((parse_standard_move, parse_simple_move))(mov)
+    alt((parse_standard_move, parse_simple_move))
+        .parse(mov)
         .finish()
         .map(|(_, mov)| mov)
         .map_err(|err| {
@@ -1241,11 +1242,11 @@ fn parse_move(mov: &str) -> Result<Move, ()> {
 
 fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
     fn parse_dst(mov: &str) -> IResult<&str, (u8, u8)> {
-        preceded(opt(one_of("xX")), pair(parse_file, parse_rank))(mov)
+        preceded(opt(one_of("xX")), pair(parse_file, parse_rank)).parse(mov)
     }
 
     map(
-        tuple((
+        (
             alt((
                 value(MovePos::QueensideCastle, tag("0-0-0")),
                 value(MovePos::KingsideCastle, tag("0-0")),
@@ -1256,13 +1257,13 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
                     src_y: None,
                 }),
                 map(
-                    tuple((
+                    (
                         not(char('B')),
                         parse_file,
                         one_of("xX"),
                         parse_file,
                         parse_rank,
-                    )),
+                    ),
                     |(_, from_x, _, to_x, to_y)| MovePos::WithPiece {
                         typ: PieceType::Pawn,
                         dst: Square::new(to_x, to_y),
@@ -1271,7 +1272,7 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
                     },
                 ),
                 map(
-                    tuple((
+                    (
                         one_of("pPrRnNbBqQkK"),
                         opt(preceded(
                             not(parse_dst),
@@ -1281,7 +1282,7 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
                             )),
                         )),
                         parse_dst,
-                    )),
+                    ),
                     |(piece, from_xy, (x, y))| {
                         let piece_type = match piece {
                             'p' | 'P' => PieceType::Pawn,
@@ -1308,14 +1309,15 @@ fn parse_standard_move(mov: &str) -> IResult<&str, Move> {
             )),
             parse_suffix,
             eof,
-        )),
+        ),
         |(pos, promote_piece, _)| Move { pos, promote_piece },
-    )(mov)
+    )
+    .parse(mov)
 }
 
 fn parse_simple_move(mov: &str) -> IResult<&str, Move> {
     map(
-        tuple((
+        (
             parse_file,
             parse_rank,
             opt(one_of(" -xX")),
@@ -1323,7 +1325,7 @@ fn parse_simple_move(mov: &str) -> IResult<&str, Move> {
             parse_rank,
             parse_suffix,
             eof,
-        )),
+        ),
         |(from_x, from_y, _, to_x, to_y, promote_piece, _)| Move {
             pos: MovePos::FromTo {
                 src: Square::new(from_x, from_y),
@@ -1331,7 +1333,8 @@ fn parse_simple_move(mov: &str) -> IResult<&str, Move> {
             },
             promote_piece,
         },
-    )(mov)
+    )
+    .parse(mov)
 }
 
 fn parse_suffix(mov: &str) -> IResult<&str, Option<PieceType>> {
@@ -1351,7 +1354,8 @@ fn parse_suffix(mov: &str) -> IResult<&str, Option<PieceType>> {
             value((), char('+')),
             value((), char('#')),
         ))),
-    )(mov)
+    )
+    .parse(mov)
 }
 
 fn parse_file(mov: &str) -> IResult<&str, u8> {
@@ -1361,9 +1365,10 @@ fn parse_file(mov: &str) -> IResult<&str, u8> {
         } else {
             char as u8 - b'A'
         }
-    })(mov)
+    })
+    .parse(mov)
 }
 
 fn parse_rank(mov: &str) -> IResult<&str, u8> {
-    map(one_of("12345678"), |char| (char as u8) - b'1')(mov)
+    map(one_of("12345678"), |char| (char as u8) - b'1').parse(mov)
 }

@@ -7,8 +7,7 @@ use nom::bytes::complete::{tag, take_until1};
 use nom::character::complete::{anychar, char, digit1};
 use nom::combinator::{map, recognize};
 use nom::multi::many1;
-use nom::sequence::tuple;
-use nom::Finish;
+use nom::{Finish, Parser};
 use pterodactyl_api::client::backups::{Backup, BackupParams};
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use pterodactyl_api::client::ServerState;
@@ -181,8 +180,8 @@ async fn handle_server_log(
     message: &str,
 ) -> crate::Result<()> {
     let parse_result: Result<(&str, (&str, &str)), nom::error::Error<&str>> = map(
-        tuple((
-            tuple((
+        (
+            (
                 char('['),
                 digit1,
                 char(':'),
@@ -190,13 +189,14 @@ async fn handle_server_log(
                 char(':'),
                 digit1,
                 tag("] [Server thread/INFO]: <"),
-            )),
+            ),
             take_until1(">"),
             tag("> "),
             recognize(many1(anychar)),
-        )),
+        ),
         |(_, sender, _, message)| (sender, message),
-    )(message)
+    )
+    .parse(message)
     .finish();
     if let Ok((_, (sender, message))) = parse_result {
         handle_chat_message(
@@ -212,8 +212,8 @@ async fn handle_server_log(
     }
 
     let parse_result: Result<(&str, &str), nom::error::Error<&str>> = map(
-        tuple((
-            tuple((
+        (
+            (
                 char('['),
                 digit1,
                 char(':'),
@@ -221,11 +221,12 @@ async fn handle_server_log(
                 char(':'),
                 digit1,
                 tag("] [Server thread/INFO]: "),
-            )),
+            ),
             recognize(many1(anychar)),
-        )),
+        ),
         |(_, log_message)| log_message,
-    )(message)
+    )
+    .parse(message)
     .finish();
     if let Ok((_, log_message)) = parse_result {
         handle_log_message(data, webhook_cache, ptero_server_id, log_message).await?;

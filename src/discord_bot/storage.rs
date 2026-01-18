@@ -6,8 +6,8 @@ use nom::character::complete::{char, none_of, satisfy, space0};
 use nom::combinator::{map, map_res, not, recognize, value};
 use nom::error::ErrorKind;
 use nom::multi::{many1, separated_list1};
-use nom::sequence::{delimited, preceded, tuple};
-use nom::{AsChar, Finish};
+use nom::sequence::{delimited, preceded};
+use nom::{AsChar, Finish, Parser};
 use serenity::client::Context;
 use serenity::json::Value;
 use serenity::model::channel::Message;
@@ -18,7 +18,7 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<'_, str>>), ()> {
     delimited(
         space0::<&str, nom::error::Error<&str>>,
         separated_list1(
-            tuple((space0, char('.'), space0)),
+            (space0, char('.'), space0),
             alt((
                 preceded(
                     not(char('"')),
@@ -43,12 +43,12 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<'_, str>>), ()> {
                                 map_res(
                                     preceded(
                                         char('u'),
-                                        recognize(tuple((
+                                        recognize((
                                             satisfy(char::is_hex_digit),
                                             satisfy(char::is_hex_digit),
                                             satisfy(char::is_hex_digit),
                                             satisfy(char::is_hex_digit),
-                                        ))),
+                                        )),
                                     ),
                                     |code| {
                                         u32::from_str_radix(code, 16)
@@ -71,7 +71,8 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<'_, str>>), ()> {
             )),
         ),
         space0,
-    )(args)
+    )
+    .parse(args)
     .finish()
     .map_err(|_| ())
 }

@@ -443,9 +443,9 @@ pub(crate) async fn run(
     message: &Message,
 ) -> crate::Result<()> {
     let word_one =
-        rand::seq::SliceRandom::choose(LIST_1.as_slice(), &mut rand::thread_rng()).unwrap();
+        rand::seq::IteratorRandom::choose(LIST_1.iter().copied(), &mut rand::rng()).unwrap();
     let word_two =
-        rand::seq::SliceRandom::choose(LIST_2.as_slice(), &mut rand::thread_rng()).unwrap();
+        rand::seq::IteratorRandom::choose(LIST_2.iter().copied(), &mut rand::rng()).unwrap();
     message
         .reply(ctx, format!("{} {}", word_one, word_two))
         .await?;
