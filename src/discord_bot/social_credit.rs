@@ -58,6 +58,16 @@ pub(crate) async fn run(
                 return Ok(());
             };
 
+            if who == message.author.id {
+                message
+                    .reply(
+                        &ctx,
+                        "You cannot change your own social credit. That's cheating!",
+                    )
+                    .await?;
+                return Ok(());
+            }
+
             let mut storage = GuildStorage::get_mut(guild_id).await;
             let social_credit = storage.social_credit.entry(who).or_default();
             let new_social_credit = social_credit.wrapping_add(amount);
