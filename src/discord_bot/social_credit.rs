@@ -184,7 +184,7 @@ async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crat
         .reply(
             ctx,
             format!(
-                "{}social_credit <get|add> ...",
+                "{}social_credit <get|add|leaderboard> ...",
                 GuildStorage::get(guild_id).await.command_prefix
             ),
         )
