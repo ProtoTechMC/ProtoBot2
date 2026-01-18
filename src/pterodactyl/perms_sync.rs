@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub(crate) async fn run(
     data: &ProtobotData,
     mut args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let Some(server_name) = args.next() else {
         error!("Missing server argument");
         return Ok(());
@@ -43,10 +43,7 @@ pub(crate) async fn run(
     Ok(())
 }
 
-async fn run_on_server(
-    data: &ProtobotData,
-    server: &PterodactylServer,
-) -> Result<(), crate::Error> {
+async fn run_on_server(data: &ProtobotData, server: &PterodactylServer) -> crate::Result<()> {
     let config = config::get();
 
     let mut remaining_superadmins: HashSet<_> =
@@ -135,7 +132,7 @@ async fn set_user_perms(
     server: &Server<'_>,
     user_uuid: Uuid,
     perms: &HashSet<&String>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if perms.is_empty() {
         server.delete_user(user_uuid).await?;
     } else {

@@ -116,7 +116,7 @@ pub struct PterodactylChatBridgeDiscordChannel {
 pub async fn send_command_safe(
     server: &pterodactyl_api::client::Server<'_>,
     command: impl Into<String>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if let Err(err) = server.send_command(command).await {
         if server.get_resources().await?.current_state == ServerState::Running {
             return Err(err.into());
@@ -128,7 +128,7 @@ pub async fn send_command_safe(
 pub async fn tellraw(
     server: &pterodactyl_api::client::Server<'_>,
     message: impl Into<String>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     #[derive(Serialize)]
     struct TextComponent {
         text: String,

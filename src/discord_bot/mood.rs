@@ -441,7 +441,7 @@ pub(crate) async fn run(
     _guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let word_one =
         rand::seq::SliceRandom::choose(LIST_1.as_slice(), &mut rand::thread_rng()).unwrap();
     let word_two =

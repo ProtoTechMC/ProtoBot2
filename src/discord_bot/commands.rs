@@ -31,7 +31,7 @@ macro_rules! declare_commands {
             ),*
         ];
 
-        async fn do_run_command(command: &str, args: &str, guild_id: GuildId, ctx: Context, message: &Message) -> Result<(), crate::Error> {
+        async fn do_run_command(command: &str, args: &str, guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
             match command {
                 $(
                     $name => $func(args, guild_id, ctx, message).await,
@@ -82,7 +82,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     info!(
         "Received discord command \"{}\" from user \"{}\" (ID {})",
         command, message.author.name, message.author.id
@@ -103,7 +103,7 @@ async fn handle_custom_command(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let command = command.to_lowercase();
     let storage = GuildStorage::get(guild_id).await;
     if let Some(toggle_info) = storage.role_toggles.get(&command) {
@@ -139,7 +139,7 @@ pub(super) fn is_admin(ctx: impl AsRef<Cache>, message: &Message) -> bool {
     false
 }
 
-pub(super) async fn check_admin(ctx: &Context, message: &Message) -> Result<bool, crate::Error> {
+pub(super) async fn check_admin(ctx: &Context, message: &Message) -> crate::Result<bool> {
     if is_admin(ctx, message) {
         return Ok(true);
     }
@@ -156,7 +156,7 @@ async fn prefix(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }
@@ -176,12 +176,7 @@ async fn prefix(
     Ok(())
 }
 
-async fn c2f(
-    args: &str,
-    _guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn c2f(args: &str, _guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let celsius: f64 = match args.parse() {
         Ok(float) => float,
         Err(_) => {
@@ -201,7 +196,7 @@ async fn cat(
     _guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let image = reqwest::get("https://cataas.com/cat")
         .await?
         .bytes()
@@ -223,7 +218,7 @@ async fn channels(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut text_count = 0;
     let mut voice_count = 0;
     for channel in guild_id.channels(&ctx).await?.values() {
@@ -265,7 +260,7 @@ async fn dog(
     _guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     #[derive(Deserialize)]
     struct DogResponse {
         url: String,
@@ -295,7 +290,7 @@ async fn echo(
     _guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if args.is_empty() {
         message.reply(ctx, "Enter something for me to say").await?;
         return Ok(());
@@ -306,12 +301,7 @@ async fn echo(
     Ok(())
 }
 
-async fn f2c(
-    args: &str,
-    _guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn f2c(args: &str, _guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let fahrenheit: f64 = match args.parse() {
         Ok(float) => float,
         Err(_) => {
@@ -331,7 +321,7 @@ async fn google(
     _guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if args.is_empty() {
         message.reply(ctx, "Please enter a search query").await?;
         return Ok(());
@@ -364,12 +354,7 @@ async fn google(
     Ok(())
 }
 
-async fn len(
-    args: &str,
-    _guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn len(args: &str, _guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     message.reply(ctx, args.chars().count().to_string()).await?;
     Ok(())
 }
@@ -379,7 +364,7 @@ async fn trick(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }
@@ -463,7 +448,7 @@ async fn help(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     let mut commands: Vec<_> = COMMANDS
         .iter()

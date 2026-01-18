@@ -12,7 +12,7 @@ pub(crate) async fn on_message(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut storage = GuildStorage::get_mut(guild_id).await;
     let channel_info = match storage
         .permanent_latest
@@ -53,11 +53,7 @@ pub(crate) async fn on_message(
     Ok(())
 }
 
-async fn print_usage(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     message
         .reply(
@@ -76,7 +72,7 @@ pub(crate) async fn on_configure_command(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }

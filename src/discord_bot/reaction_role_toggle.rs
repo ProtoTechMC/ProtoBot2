@@ -11,7 +11,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }
@@ -134,11 +134,7 @@ pub(crate) async fn run(
     Ok(())
 }
 
-async fn print_usage(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     message
         .reply(
             ctx,

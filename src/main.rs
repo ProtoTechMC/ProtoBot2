@@ -33,16 +33,33 @@ enum Error {
     #[error("Json Error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("Discord Error: {0}")]
-    Serenity(#[from] serenity::Error),
+    Serenity(#[from] Box<serenity::Error>),
     #[error("Utf8 Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
     #[error("UUID Error: {0}")]
     Uuid(#[from] uuid::Error),
     #[error("Pterodactyl Error: {0}")]
-    Pterodactyl(#[from] pterodactyl_api::Error),
+    Pterodactyl(#[from] Box<pterodactyl_api::Error>),
     #[error("Other Error: {0}")]
     Other(String),
 }
+
+type Result<T> = std::result::Result<T, Error>;
+
+// Workaround for https://github.com/dtolnay/thiserror/issues/424
+macro_rules! boxed_from {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl ::std::convert::From<$ty> for Error {
+                fn from(value: $ty) -> Self {
+                    Self::from(::std::boxed::Box::new(value))
+                }
+            }
+        )*
+    }
+}
+
+boxed_from!(serenity::Error, pterodactyl_api::Error);
 
 #[derive(Clone)]
 pub struct ProtobotData {

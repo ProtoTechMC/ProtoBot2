@@ -103,7 +103,7 @@ async fn process_command(
                 )
                 .await?;
             match update_copy::run(ctx, &command, pterodactyl).await {
-                Err(crate::Error::Serenity(err)) => return Err(err),
+                Err(crate::Error::Serenity(err)) => return Err(*err),
                 Err(err) => {
                     command
                         .edit_response(
@@ -127,7 +127,7 @@ async fn process_chatbridge(
     pterodactyl: &pterodactyl_api::client::Client,
     chat_bridge: &PterodactylChatBridge,
     new_message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let config = config::get();
     try_join_all(
         chat_bridge
@@ -165,7 +165,7 @@ async fn send_chatbridge_message(
     pterodactyl: &pterodactyl_api::client::Client,
     server: &PterodactylServer,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let ptero_server = pterodactyl.get_server(&server.id);
 
     let sanitized_message = message.content_safe(ctx);
@@ -201,7 +201,7 @@ async fn send_chatbridge_message_to_discord(
     webhook_cache: &DashMap<String, Webhook>,
     webhook: &str,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let webhook = match webhook_cache.entry(webhook.to_owned()) {
         Entry::Occupied(entry) => entry.get().clone(),
         Entry::Vacant(entry) => entry.insert(Webhook::from_url(ctx, webhook).await?).clone(),
@@ -454,7 +454,7 @@ impl EventHandler for Handler {
 
 pub(crate) async fn create_client(
     pterodactyl: Arc<pterodactyl_api::client::Client>,
-) -> Result<Client, crate::Error> {
+) -> crate::Result<Client> {
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MESSAGES
@@ -468,7 +468,7 @@ pub(crate) async fn create_client(
         .await?)
 }
 
-pub(crate) async fn run(mut client: Client) -> Result<(), crate::Error> {
+pub(crate) async fn run(mut client: Client) -> crate::Result<()> {
     tokio::select! {
         _ = crate::wait_shutdown() => {}
         result = client.start() => result?,

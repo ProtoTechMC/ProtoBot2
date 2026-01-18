@@ -18,7 +18,7 @@ pub fn get() -> Arc<Config> {
     writable_config().read().unwrap().clone()
 }
 
-pub(crate) fn reload() -> Result<(), crate::Error> {
+pub(crate) fn reload() -> crate::Result<()> {
     let new_config = Config::load()?;
     *writable_config().write().unwrap() = Arc::new(new_config);
     Ok(())
@@ -41,7 +41,7 @@ pub struct Config {
 }
 
 impl Config {
-    fn load() -> Result<Config, crate::Error> {
+    fn load() -> crate::Result<Config> {
         let file = File::open("config.json")?;
         let config: Config = serde_json::from_reader(file)?;
         config.lint();

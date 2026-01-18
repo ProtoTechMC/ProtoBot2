@@ -20,7 +20,7 @@ use std::sync::Arc;
 pub(crate) async fn create_backup(
     server: &pterodactyl_api::client::Server<'_>,
     name: Option<String>,
-) -> Result<Backup, crate::Error> {
+) -> crate::Result<Backup> {
     let backup_limit = server
         .get_details()
         .await?
@@ -62,7 +62,7 @@ async fn handle_chat_message(
     ptero_server: &pterodactyl_api::client::Server<'_>,
     sender: &str,
     message: &str,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let config = config::get();
     let Some(server) = config
         .pterodactyl_servers
@@ -146,7 +146,7 @@ async fn handle_log_message(
     webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
     message: &str,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     #[allow(clippy::manual_map)]
     let leave_join_user_action = if let Some(username) = message.strip_suffix(" joined the game") {
         Some((username, "joined the game"))
@@ -179,7 +179,7 @@ async fn handle_server_log(
     ptero_server_id: &str,
     ptero_server: &pterodactyl_api::client::Server<'_>,
     message: &str,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let parse_result: Result<(&str, (&str, &str)), nom::error::Error<&str>> = map(
         tuple((
             tuple((
@@ -242,7 +242,7 @@ async fn broadcast_message(
     username: Option<&str>,
     system_message: bool,
     message: String,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let config = config::get();
     let Some(from_server) = config
         .pterodactyl_servers
@@ -337,7 +337,7 @@ async fn broadcast_to_discord(
     sender: &str,
     avatar_username: Option<&str>,
     message: &str,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let webhook = match webhook_cache.entry(webhook.to_owned()) {
         Entry::Occupied(entry) => entry.get().clone(),
         Entry::Vacant(entry) => entry
@@ -358,7 +358,7 @@ fn avatar_url(username: &str) -> String {
     format!("https://visage.surgeplay.com/face/256/{username}")
 }
 
-fn sanitize_username(username: &str, remove_team_prefix: bool) -> Cow<str> {
+fn sanitize_username(username: &str, remove_team_prefix: bool) -> Cow<'_, str> {
     if !username.contains('§') && (!username.contains('[') || !username.contains(']')) {
         return username.into();
     }
@@ -475,7 +475,7 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
     }
 }
 
-pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> Result<(), crate::Error> {
+pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> crate::Result<()> {
     info!("Starting websocket for server {}", server.name);
     let listener = WebsocketListener {
         data: data.clone(),

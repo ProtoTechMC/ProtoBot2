@@ -13,7 +13,7 @@ use tokio::net::TcpListener;
 async fn post_application(
     request: Request<Incoming>,
     data: &ProtobotData,
-) -> Result<Response<Full<Bytes>>, crate::Error> {
+) -> crate::Result<Response<Full<Bytes>>> {
     let auth = request
         .headers()
         .get("Authorization")
@@ -37,7 +37,7 @@ async fn post_application(
 async fn application(
     request: Request<Incoming>,
     data: &ProtobotData,
-) -> Result<Response<Full<Bytes>>, crate::Error> {
+) -> crate::Result<Response<Full<Bytes>>> {
     match request.method() {
         &Method::POST => post_application(request, data).await,
         _ => not_found(),
@@ -47,7 +47,7 @@ async fn application(
 async fn on_http_request(
     request: Request<Incoming>,
     data: &ProtobotData,
-) -> Result<Response<Full<Bytes>>, crate::Error> {
+) -> crate::Result<Response<Full<Bytes>>> {
     let path = request.uri().path();
     info!("{} {}", request.method(), path);
 
@@ -57,13 +57,13 @@ async fn on_http_request(
     }
 }
 
-fn not_found() -> Result<Response<Full<Bytes>>, crate::Error> {
+fn not_found() -> crate::Result<Response<Full<Bytes>>> {
     Ok(Response::builder()
         .status(StatusCode::NOT_FOUND)
         .body("Not found".into())?)
 }
 
-pub(crate) async fn run(data: ProtobotData) -> Result<(), crate::Error> {
+pub(crate) async fn run(data: ProtobotData) -> crate::Result<()> {
     let addr: SocketAddr = config::get().listen_ip.parse().unwrap();
     let tcp_listener = TcpListener::bind(&addr).await?;
     info!("Listening on http://{}", addr);

@@ -32,7 +32,7 @@ pub(crate) fn handle_stdin_loop(runtime: &tokio::runtime::Runtime, data: Protobo
 
 macro_rules! declare_commands {
     ($(($name:literal, $func:path, $description:literal);)*) => {
-        pub async fn handle_command(data: &ProtobotData, mut args: impl Iterator<Item = &str>) -> Result<(), crate::Error> {
+        pub async fn handle_command(data: &ProtobotData, mut args: impl Iterator<Item = &str>) -> crate::Result<()> {
             let Some(command) = args.next() else { return Ok(()); };
             match command {
                 $(
@@ -65,13 +65,13 @@ declare_commands! {
 async fn reload_config(
     _data: &ProtobotData,
     _args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     config::reload()?;
     info!("Reloaded config");
     Ok(())
 }
 
-async fn stop(_data: &ProtobotData, _args: impl Iterator<Item = &str>) -> Result<(), crate::Error> {
+async fn stop(_data: &ProtobotData, _args: impl Iterator<Item = &str>) -> crate::Result<()> {
     crate::shutdown();
     Ok(())
 }

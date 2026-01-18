@@ -18,7 +18,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if args.is_empty() {
         message
             .reply(

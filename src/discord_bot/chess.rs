@@ -15,11 +15,7 @@ use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 // ===== USER INTERACTION ===== //
 
-async fn print_usage(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let prefix = GuildStorage::get(guild_id).await.command_prefix.clone();
     message
         .reply(
@@ -55,7 +51,7 @@ async fn print_board(
     user: UserId,
     ctx: &Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let fen = game
         .board
         .iter()
@@ -164,7 +160,7 @@ async fn start_game(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if user_a == user_b {
         message.reply(ctx, "You cannot play yourself!").await?;
         return Ok(());
@@ -271,11 +267,7 @@ async fn start_game(
     Ok(())
 }
 
-async fn resign_game(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn resign_game(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let mut storage = GuildStorage::get_mut(guild_id).await;
     let resigner = message.author.id;
     let resigned_game = match storage
@@ -321,7 +313,7 @@ async fn set_option(
     message: &Message,
     key: &str,
     value: &str,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut storage = GuildStorage::get_mut(guild_id).await;
     let options = storage
         .chess_state
@@ -372,7 +364,7 @@ async fn do_move(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut storage = GuildStorage::get_mut(guild_id).await;
     let (game, options) = match storage
         .chess_state
@@ -508,7 +500,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if args.is_empty() {
         return print_usage(guild_id, ctx, message).await;
     }

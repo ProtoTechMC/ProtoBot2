@@ -13,7 +13,7 @@ use uuid::Uuid;
 pub(crate) async fn run(
     data: &ProtobotData,
     mut args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let Some(operation) = args.next() else {
         print_usage();
         return Ok(());
@@ -82,10 +82,10 @@ pub(crate) async fn run(
 async fn whitelist_across_categories<F, Fut>(
     category: &str,
     mut whitelist_operation: F,
-) -> Result<(), crate::Error>
+) -> crate::Result<()>
 where
     F: FnMut(PterodactylServerCategory) -> Fut,
-    Fut: Future<Output = Result<(), crate::Error>>,
+    Fut: Future<Output = crate::Result<()>>,
 {
     if category == "all" {
         let categories: BTreeSet<_> = config::get()
@@ -116,7 +116,7 @@ async fn whitelist_add(
     player_name: &str,
     category: PterodactylServerCategory,
     name_and_uuid: OnceCell<(String, Uuid)>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let Some(mut whitelist) = get_whitelist(data, category).await? else {
         return Ok(());
     };
@@ -136,7 +136,7 @@ async fn whitelist_add(
                 .build();
             let client = match client {
                 Ok(client) => client,
-                Err(err) => return Err::<(String, Uuid), crate::Error>(err.into()),
+                Err(err) => return Err(err.into()),
             };
             let response = client
                 .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
@@ -170,7 +170,7 @@ async fn whitelist_add(
             }
 
             let player = mojang_players.into_iter().next().unwrap();
-            Ok::<(String, Uuid), crate::Error>((player.name, player.id))
+            Ok((player.name, player.id))
         })
         .await?;
 
@@ -198,7 +198,7 @@ async fn whitelist_remove(
     data: &ProtobotData,
     player_name: &str,
     category: PterodactylServerCategory,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let Some(mut whitelist) = get_whitelist(data, category).await? else {
         return Ok(());
     };
@@ -233,7 +233,7 @@ async fn whitelist_remove(
 async fn whitelist_list(
     data: &ProtobotData,
     category: PterodactylServerCategory,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let Some(whitelist) = get_whitelist(data, category).await? else {
         return Ok(());
     };
@@ -255,7 +255,7 @@ async fn whitelist_list(
 async fn get_whitelist(
     data: &ProtobotData,
     category: PterodactylServerCategory,
-) -> Result<Option<Vec<Player>>, crate::Error> {
+) -> crate::Result<Option<Vec<Player>>> {
     let config = config::get();
     let Some(server) = config.pterodactyl_servers(category).next() else {
         error!("No servers of the given category");
@@ -275,7 +275,7 @@ async fn set_whitelist(
     whitelist: Vec<Player>,
     category: PterodactylServerCategory,
     mut message: impl FnMut(&str) -> String,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let config = config::get();
     let whitelist_json = serde_json::to_string_pretty(&whitelist)?;
     let tasks = config.pterodactyl_servers(category).map(|server| {
@@ -300,7 +300,7 @@ async fn run_command(
     command: String,
     category: PterodactylServerCategory,
     mut message: impl FnMut(&str) -> String,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let config = config::get();
     let tasks = config.pterodactyl_servers(category).map(|server| {
         let command = command.clone();

@@ -16,7 +16,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if args == "leaderboard" {
         show_leaderboard(guild_id, ctx, message).await
     } else {
@@ -24,11 +24,7 @@ pub(crate) async fn run(
     }
 }
 
-async fn run_normal(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn run_normal(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let Some(member) = &message.member else {
         return Ok(());
     };
@@ -122,11 +118,7 @@ async fn run_normal(
     Ok(())
 }
 
-async fn show_leaderboard(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn show_leaderboard(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     let mut entries: Vec<_> = storage
         .send_to_support_leaderboard

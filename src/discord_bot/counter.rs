@@ -11,7 +11,7 @@ pub(crate) async fn inc_counter(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut storage = GuildStorage::get_mut(guild_id).await;
     let Some(count) = storage.counters.get(counter) else {
         storage.discard();
@@ -37,7 +37,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut args = args.split(' ');
     match args.next() {
         Some("list") => list_counters(guild_id, ctx, message).await?,
@@ -62,11 +62,7 @@ pub(crate) async fn run(
     Ok(())
 }
 
-async fn list_counters(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn list_counters(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     let mut counters: Vec<_> = storage.counters.keys().collect();
     counters.sort();
@@ -96,7 +92,7 @@ async fn add_counter(
     ctx: Context,
     message: &Message,
     mut args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }
@@ -132,7 +128,7 @@ async fn remove_counter(
     ctx: Context,
     message: &Message,
     mut args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }
@@ -165,7 +161,7 @@ async fn set_counter(
     ctx: Context,
     message: &Message,
     mut args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }
@@ -208,7 +204,7 @@ async fn get_counter(
     ctx: Context,
     message: &Message,
     mut args: impl Iterator<Item = &str>,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let Some(counter) = args.next() else {
         message
             .reply(ctx, "Need to specify the name of the counter")

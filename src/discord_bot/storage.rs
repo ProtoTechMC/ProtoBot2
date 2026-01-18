@@ -14,7 +14,7 @@ use serenity::model::channel::Message;
 use serenity::model::id::GuildId;
 use std::borrow::Cow;
 
-fn parse_path(args: &str) -> Result<(&str, Vec<Cow<str>>), ()> {
+fn parse_path(args: &str) -> Result<(&str, Vec<Cow<'_, str>>), ()> {
     delimited(
         space0::<&str, nom::error::Error<&str>>,
         separated_list1(
@@ -76,7 +76,7 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<str>>), ()> {
     .map_err(|_| ())
 }
 
-async fn output_raw_data(data: &str, ctx: Context, message: &Message) -> Result<(), crate::Error> {
+async fn output_raw_data(data: &str, ctx: Context, message: &Message) -> crate::Result<()> {
     if data.len() > 1980 {
         message
             .reply(ctx, format!("```\n{}...\n```", &data[..1980]))
@@ -143,7 +143,7 @@ async fn get_data(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let path = if args.is_empty() {
         Vec::new()
     } else {
@@ -195,7 +195,7 @@ async fn set_data(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let (value, path) = match parse_path(args).ok().and_then(|(value, path)| {
         value
             .strip_prefix('=')
@@ -254,7 +254,7 @@ async fn delete_data(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let mut path = match parse_path(args) {
         Ok(("", path)) => path,
         _ => {
@@ -347,7 +347,7 @@ async fn list_data(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let path = if args.is_empty() {
         Vec::new()
     } else {
@@ -426,11 +426,7 @@ async fn list_data(
     Ok(())
 }
 
-async fn print_help(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn print_help(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     let prefix = &storage.command_prefix;
     message
@@ -455,7 +451,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     if !check_admin(&ctx, message).await? {
         return Ok(());
     }

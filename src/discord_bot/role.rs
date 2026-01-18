@@ -7,11 +7,7 @@ use serenity::model::channel::Message;
 use serenity::model::id::{GuildId, RoleId, UserId};
 use std::collections::HashMap;
 
-async fn print_usage(
-    guild_id: GuildId,
-    ctx: Context,
-    message: &Message,
-) -> Result<(), crate::Error> {
+async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     let prefix = &storage.command_prefix;
     message
@@ -39,7 +35,7 @@ pub(crate) async fn run(
     guild_id: GuildId,
     ctx: Context,
     message: &Message,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let args: Vec<_> = args.split(' ').collect();
     match args[0] {
         "add" => {

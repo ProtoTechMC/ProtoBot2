@@ -10,7 +10,7 @@ use std::collections::HashMap;
 pub(crate) async fn handle_application(
     application_json: &str,
     data: &ProtobotData,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let app: Application = serde_json::from_str(application_json)?;
     let attachments = find_attachments(&app).await;
     let embeds = ApplicationEmbeds::create(app);
@@ -476,7 +476,7 @@ enum Answer {
 }
 
 impl Answer {
-    fn to_str(&self) -> Cow<str> {
+    fn to_str(&self) -> Cow<'_, str> {
         match self {
             Answer::String(str) => Cow::Borrowed(&**str),
             Answer::StringArray(strs) => strs.join("\r\n").into(),

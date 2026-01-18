@@ -20,7 +20,7 @@ pub(crate) async fn run(
     ctx: &Context,
     command: &CommandInteraction,
     pterodactyl: &pterodactyl_api::client::Client,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     let _guard = match copy_update_mutex().try_lock() {
         Ok(guard) => guard,
         Err(_) => {
@@ -156,7 +156,7 @@ pub(crate) async fn run(
     Ok(())
 }
 
-async fn stop_and_wait(server: &pterodactyl_api::client::Server<'_>) -> Result<(), crate::Error> {
+async fn stop_and_wait(server: &pterodactyl_api::client::Server<'_>) -> crate::Result<()> {
     let current_state = server.get_resources().await?.current_state;
     if current_state == ServerState::Stopping || current_state == ServerState::Offline {
         return Ok(());
@@ -189,7 +189,7 @@ async fn stop_and_wait(server: &pterodactyl_api::client::Server<'_>) -> Result<(
 
 async fn create_backup_and_wait(
     server: &pterodactyl_api::client::Server<'_>,
-) -> Result<Backup, crate::Error> {
+) -> crate::Result<Backup> {
     let mut backup = smp_commands::create_backup(
         server,
         Some(format!("Pre copy update {}", chrono::Utc::now())),

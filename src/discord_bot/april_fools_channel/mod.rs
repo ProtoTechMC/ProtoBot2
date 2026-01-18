@@ -26,7 +26,7 @@ pub(crate) async fn on_message(
     author: &User,
     channel_id: ChannelId,
     message_id: MessageId,
-) -> Result<(), crate::Error> {
+) -> crate::Result<()> {
     // find words in message
     let error_message = if has_attachments {
         Some(april_fools.has_attachment_message().to_owned())
