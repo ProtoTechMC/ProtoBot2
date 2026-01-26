@@ -16,7 +16,7 @@ pub(crate) async fn run(
         return Ok(());
     }
 
-    let args: Vec<_> = args.split(' ').collect();
+    let args: Vec<_> = args.split_whitespace().collect();
     if args.len() != 5 {
         return print_usage(guild_id, ctx, message).await;
     }

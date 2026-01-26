@@ -74,7 +74,7 @@ async fn handle_chat_message(
     if let Some(command) = message.strip_prefix('!') {
         if server.allow_commands {
             info!("Received command {} from {}", command, sender);
-            let args: Vec<_> = command.split(' ').collect();
+            let args: Vec<_> = command.split_whitespace().collect();
             match args[0] {
                 "s" => {
                     if args.len() > 1 {

@@ -9,7 +9,7 @@ pub(crate) async fn run(
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
-    let args = args.split(' ').collect::<Vec<_>>();
+    let args = args.split_whitespace().collect::<Vec<_>>();
     if args.is_empty() {
         print_usage(guild_id, ctx, message).await?;
         return Ok(());

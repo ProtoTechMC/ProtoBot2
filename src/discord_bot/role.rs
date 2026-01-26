@@ -36,7 +36,7 @@ pub(crate) async fn run(
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
-    let args: Vec<_> = args.split(' ').collect();
+    let args: Vec<_> = args.split_whitespace().collect();
     match args[0] {
         "add" => {
             if args.len() != 3 {

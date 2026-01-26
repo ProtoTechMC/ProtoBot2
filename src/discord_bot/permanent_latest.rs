@@ -80,7 +80,7 @@ pub(crate) async fn on_configure_command(
     if args.is_empty() {
         return print_usage(guild_id, ctx, message).await;
     }
-    let args: Vec<_> = args.split(' ').collect();
+    let args: Vec<_> = args.split_whitespace().collect();
 
     match args[0] {
         "add" => {

@@ -17,7 +17,7 @@ pub(crate) fn handle_stdin_loop(runtime: &tokio::runtime::Runtime, data: Protobo
                         if let Some(slash_removed) = line.strip_prefix('/') {
                             line = slash_removed;
                         }
-                        if let Err(err) = handle_command(&data, line.split(' ')).await {
+                        if let Err(err) = handle_command(&data, line.split_whitespace()).await {
                             error!("Error while handling stdin: {}", err);
                         }
                     });

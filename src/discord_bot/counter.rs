@@ -38,7 +38,7 @@ pub(crate) async fn run(
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
-    let mut args = args.split(' ');
+    let mut args = args.split_whitespace();
     match args.next() {
         Some("list") => list_counters(guild_id, ctx, message).await?,
         Some("add") => add_counter(guild_id, ctx, message, args).await?,

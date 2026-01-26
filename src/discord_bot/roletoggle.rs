@@ -18,7 +18,7 @@ pub(crate) async fn run(
         return Ok(());
     }
 
-    let args: Vec<_> = args.split(' ').collect();
+    let args: Vec<_> = args.split_whitespace().collect();
     match args[0] {
         "add" => {
             if !(3..=4).contains(&args.len()) {

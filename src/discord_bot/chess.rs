@@ -504,7 +504,7 @@ pub(crate) async fn run(
     if args.is_empty() {
         return print_usage(guild_id, ctx, message).await;
     }
-    let args: Vec<&str> = args.split(' ').collect();
+    let args: Vec<&str> = args.split_whitespace().collect();
 
     match args[0] {
         "start" => {
