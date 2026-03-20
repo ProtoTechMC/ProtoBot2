@@ -463,24 +463,52 @@ async fn help(
     role_toggles.sort();
     tricks.sort();
 
+    let mut embed_builder = CreateEmbed::new().title("ProtoBot command help");
+
+    let mut built_in_commands = String::new();
+    let mut built_in_commands_len = 0;
+    let mut built_in_commands_embed_count: usize = 0;
+    for command in commands {
+        let next_command = format!("• **{}**: {}", command.name, command.description);
+        let next_command_len = next_command.chars().count();
+
+        if built_in_commands_len + 1 + next_command_len > 1024 {
+            let embed_name = if built_in_commands_embed_count == 0 {
+                "Built-in commands:".to_owned()
+            } else {
+                format!("Built-in commands ({})", built_in_commands_embed_count + 1)
+            };
+            built_in_commands_embed_count += 1;
+            embed_builder =
+                embed_builder.field(embed_name, std::mem::take(&mut built_in_commands), false);
+            built_in_commands_len = 0;
+        }
+
+        if built_in_commands_len == 0 {
+            built_in_commands = next_command;
+            built_in_commands_len = next_command_len;
+        } else {
+            built_in_commands.push('\n');
+            built_in_commands.push_str(&next_command);
+            built_in_commands_len += 1 + next_command_len;
+        }
+    }
+
+    if built_in_commands_len > 0 {
+        let embed_name = if built_in_commands_embed_count == 0 {
+            "Built-in commands:".to_owned()
+        } else {
+            format!("Built-in commands ({})", built_in_commands_embed_count + 1)
+        };
+        embed_builder = embed_builder.field(embed_name, built_in_commands, false);
+    }
+
     message
         .channel_id
         .send_message(
             ctx,
             CreateMessage::new().reference_message(message).embed(
-                CreateEmbed::new()
-                    .title("ProtoBot command help")
-                    .field(
-                        "Built-in commands:",
-                        commands
-                            .iter()
-                            .map(|command| {
-                                format!("• **{}**: {}", command.name, command.description)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        false,
-                    )
+                embed_builder
                     .field(
                         "Role toggles:",
                         if role_toggles.is_empty() {
