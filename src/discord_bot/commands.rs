@@ -1,7 +1,7 @@
 use crate::discord_bot::guild_storage::GuildStorage;
 use crate::discord_bot::{
     brainfuck, chess, counter, mood, permanent_latest, reaction_role_toggle, role, roletoggle,
-    social_credit, storage, support,
+    social_credit, storage, support, welcome_message,
 };
 use chrono::Datelike;
 use log::info;
@@ -76,6 +76,7 @@ declare_commands! {
     "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
     "support" => (support::run, "Use on people who are asking for support without using the support channel"),
     "trick" => (trick, "Adds a trick"),
+    "welcome_message" => (welcome_message::run, "Sets the welcome message for new users in this discord"),
 }
 
 pub(crate) async fn run(

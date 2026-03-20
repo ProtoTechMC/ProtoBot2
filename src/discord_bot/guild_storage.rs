@@ -2,6 +2,7 @@ use crate::discord_bot::chess::ChessState;
 use crate::discord_bot::permanent_latest::PermanentLatestInfo;
 use crate::discord_bot::role::RoleData;
 use crate::discord_bot::roletoggle::RoleToggleInfo;
+use crate::discord_bot::welcome_message::WelcomeMessageData;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
@@ -32,6 +33,8 @@ pub struct GuildStorage {
     #[serde(default)]
     pub join_log_channel: Option<ChannelId>,
     #[serde(default)]
+    pub welcome_message: Option<WelcomeMessageData>,
+    #[serde(default)]
     pub role_toggles: HashMap<String, RoleToggleInfo>,
     #[serde(default)]
     pub tricks: HashMap<String, String>,
@@ -57,6 +60,7 @@ impl Default for GuildStorage {
             role_data: RoleData::default(),
             log_channel: None,
             join_log_channel: None,
+            welcome_message: None,
             role_toggles: HashMap::new(),
             tricks: HashMap::new(),
             permanent_latest: PermanentLatestInfo::default(),

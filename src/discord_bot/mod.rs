@@ -13,6 +13,7 @@ mod social_credit;
 mod storage;
 mod support;
 mod update_copy;
+mod welcome_message;
 
 use crate::config;
 use crate::discord_bot::april_fools_channel::{get_april_fools_channel, AprilFoolsChannel};
@@ -237,13 +238,12 @@ async fn send_chatbridge_message_to_discord(
 #[async_trait]
 impl EventHandler for Handler {
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-        if let Some(join_log_channel) = GuildStorage::get(new_member.guild_id)
-            .await
-            .join_log_channel
-        {
+        let storage = GuildStorage::get(new_member.guild_id).await;
+
+        if let Some(join_log_channel) = storage.join_log_channel {
             if let Err(err) = join_log_channel
                 .send_message(
-                    ctx,
+                    &ctx,
                     CreateMessage::new().content(format!(
                         "{} has risen from the dead.",
                         new_member.display_name()
@@ -252,6 +252,23 @@ impl EventHandler for Handler {
                 .await
             {
                 error!("Failed to send message in join log channel: {}", err);
+            }
+        }
+
+        if let Some(welcome_message_data) = &storage.welcome_message {
+            if let Err(err) = welcome_message_data
+                .channel
+                .send_message(
+                    &ctx,
+                    CreateMessage::new().content(
+                        welcome_message_data
+                            .message
+                            .replace("[user]", &format!("<@{}>", new_member.user.id)),
+                    ),
+                )
+                .await
+            {
+                error!("Failed to send welcome message: {}", err);
             }
         }
     }
