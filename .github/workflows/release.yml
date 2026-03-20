@@ -36,7 +36,7 @@ jobs:
       - name: Restart Pterodactyl Server
         uses: fjogeleit/http-request-action@v1
         with:
-          url: 'https://panel.kiwitechmc.com/api/client/servers/41fd740c/power'
+          url: 'https://panel.katie.cat/api/client/servers/41fd740c/power'
           method: POST
           customHeaders: '{"Accept":"application/json","Content-Type":"application/json","Authorization":"Bearer ${{ secrets.PTERODACTYL_UPDATE_KEY }}"}'
           data: '{"signal":"restart"}'

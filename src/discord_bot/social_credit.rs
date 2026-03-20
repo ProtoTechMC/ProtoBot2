@@ -136,7 +136,7 @@ pub(crate) async fn run(
                     ))
                     .await
                     .join("\n"),
-                    join_all(entries.iter().take(5).enumerate().map(
+                    join_all(entries.iter().take(5).rev().enumerate().map(
                         |(i, (user, social_credit))| {
                             let ctx = ctx.clone();
                             async move {
