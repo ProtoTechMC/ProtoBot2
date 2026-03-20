@@ -76,7 +76,7 @@ declare_commands! {
     "storage" => (storage::run, "Admin commands to directly manipulate guild storage"),
     "support" => (support::run, "Use on people who are asking for support without using the support channel"),
     "trick" => (trick, "Adds a trick"),
-    "welcome_message" => (welcome_message::run, "Sets the welcome message for new users in this discord"),
+    "welcome_message" => (welcome_message::run, "Sets the welcome message for new users in this guild"),
 }
 
 pub(crate) async fn run(
@@ -476,7 +476,7 @@ async fn help(
             let embed_name = if built_in_commands_embed_count == 0 {
                 "Built-in commands:".to_owned()
             } else {
-                format!("Built-in commands ({})", built_in_commands_embed_count + 1)
+                format!("Built-in commands ({}):", built_in_commands_embed_count + 1)
             };
             built_in_commands_embed_count += 1;
             embed_builder =
@@ -498,7 +498,7 @@ async fn help(
         let embed_name = if built_in_commands_embed_count == 0 {
             "Built-in commands:".to_owned()
         } else {
-            format!("Built-in commands ({})", built_in_commands_embed_count + 1)
+            format!("Built-in commands ({}):", built_in_commands_embed_count + 1)
         };
         embed_builder = embed_builder.field(embed_name, built_in_commands, false);
     }
