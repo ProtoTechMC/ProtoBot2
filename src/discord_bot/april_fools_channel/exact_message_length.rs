@@ -2,7 +2,7 @@ use crate::discord_bot::april_fools_channel::{AprilFoolsChannel, AprilFoolsMessa
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, MessageId};
+use serenity::all::ChannelId;
 use serenity::builder::CreateMessage;
 
 pub(crate) struct ExactMessageLength;
@@ -14,8 +14,6 @@ pub(crate) struct ExactMessageLengthData {
     pub channel: ChannelId,
     #[serde(default)]
     pub expected_length: Option<u16>,
-    #[serde(default)]
-    pub last_inform_message: Option<MessageId>,
 }
 
 #[async_trait]
@@ -26,7 +24,10 @@ impl AprilFoolsChannel for ExactMessageLength {
             return None;
         };
 
-        if expected_length_data.last_inform_message == Some(context.message_id) {
+        if context.author.id == context.own_id
+            && !context.has_attachments
+            && is_expected_length_message(context.content)
+        {
             return None;
         }
 
@@ -50,7 +51,7 @@ impl AprilFoolsChannel for ExactMessageLength {
             .and_then(|exact_message_length| exact_message_length.expected_length)
             == Some(67);
         let new_length = reroll_message_length(just_had_67);
-        let message = context
+        context
             .channel_id
             .send_message(
                 &context.context,
@@ -65,7 +66,6 @@ impl AprilFoolsChannel for ExactMessageLength {
             return Ok(());
         };
         expected_length_data.expected_length = Some(new_length);
-        expected_length_data.last_inform_message = Some(message.id);
         storage.save().await;
         Ok(())
     }
@@ -82,4 +82,11 @@ fn reroll_message_length(just_had_67: bool) -> u16 {
             length
         }
     }
+}
+
+fn is_expected_length_message(message: &str) -> bool {
+    let Some(expected_length) = message.strip_prefix("Now expecting message length of ") else {
+        return false;
+    };
+    expected_length.parse::<u16>().is_ok()
 }

@@ -37,17 +37,19 @@ use serenity::model::channel::{Message, Reaction};
 use serenity::model::event::MessageUpdateEvent;
 use serenity::model::gateway::Ready;
 use serenity::model::guild::Member;
-use serenity::model::id::GuildId;
+use serenity::model::id::{GuildId, UserId};
 use serenity::model::user::User;
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub(crate) type Handle = Arc<Http>;
 
 struct Handler {
     webhook_cache: Arc<DashMap<String, Webhook>>,
     pterodactyl: Arc<pterodactyl_api::client::Client>,
+    own_id: RwLock<Option<UserId>>,
 }
 
 async fn create_commands(ctx: &Context, guild_id: GuildId) -> serenity::Result<()> {
@@ -307,6 +309,7 @@ impl EventHandler for Handler {
         };
         let pterodactyl = self.pterodactyl.clone();
         let webhook_cache = self.webhook_cache.clone();
+        let own_id = self.own_id.read().await.unwrap();
 
         tokio::runtime::Handle::current().spawn(async move {
             enum MessageHandling<'a> {
@@ -386,6 +389,7 @@ impl EventHandler for Handler {
                             guild_id,
                             channel_id: new_message.channel_id,
                             message_id: new_message.id,
+                            own_id,
                         },
                     )
                     .await
@@ -406,6 +410,8 @@ impl EventHandler for Handler {
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
+        let own_id = self.own_id.read().await.unwrap();
+
         let Some(guild_id) = event.guild_id else {
             return;
         };
@@ -443,6 +449,7 @@ impl EventHandler for Handler {
                             guild_id,
                             channel_id: event.channel_id,
                             message_id: event.id,
+                            own_id,
                         },
                     )
                     .await
@@ -464,11 +471,13 @@ impl EventHandler for Handler {
         reaction_role_toggle::on_reaction_change(ctx, reaction, true).await;
     }
 
-    async fn ready(&self, ctx: Context, _data_about_bot: Ready) {
+    async fn ready(&self, ctx: Context, data_about_bot: Ready) {
         if let Err(err) = create_commands(&ctx, config::get().guild_id).await {
             error!("Failed to register commands: {}", err);
             return;
         }
+
+        *self.own_id.write().await = Some(data_about_bot.user.id);
 
         info!("Discord bot ready");
     }
@@ -497,6 +506,7 @@ pub(crate) async fn create_client(
         .event_handler(Handler {
             webhook_cache: Arc::new(DashMap::new()),
             pterodactyl,
+            own_id: RwLock::new(None),
         })
         .await?)
 }

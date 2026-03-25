@@ -2,7 +2,9 @@ use crate::discord_bot::april_fools_channel::exact_message_length::ExactMessageL
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, Context, CreateMessage, GuildId, MessageFlags, MessageId, User};
+use serenity::all::{
+    ChannelId, Context, CreateMessage, GuildId, MessageFlags, MessageId, User, UserId,
+};
 
 mod exact_message_length;
 mod haiku;
@@ -17,6 +19,7 @@ pub(crate) struct AprilFoolsMessageContext<'a> {
     pub guild_id: GuildId,
     pub channel_id: ChannelId,
     pub message_id: MessageId,
+    pub own_id: UserId,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
