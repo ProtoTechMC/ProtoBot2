@@ -89,7 +89,9 @@ pub(crate) async fn on_message(
             }
         }
     } else {
-        april_fools.on_success(&context).await?;
+        if !context.author.bot {
+            april_fools.on_success(&context).await?;
+        }
     }
     Ok(())
 }

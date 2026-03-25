@@ -2,7 +2,7 @@ use crate::discord_bot::april_fools_channel::{AprilFoolsChannel, AprilFoolsMessa
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serenity::all::ChannelId;
+use serenity::all::{ChannelId, MessageId};
 use serenity::builder::CreateMessage;
 
 pub(crate) struct ExactMessageLength;
@@ -12,7 +12,10 @@ pub(crate) static CHANNEL: ExactMessageLength = ExactMessageLength;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub(crate) struct ExactMessageLengthData {
     pub channel: ChannelId,
+    #[serde(default)]
     pub expected_length: Option<u16>,
+    #[serde(default)]
+    pub last_inform_message: Option<MessageId>,
 }
 
 #[async_trait]
@@ -24,6 +27,11 @@ impl AprilFoolsChannel for ExactMessageLength {
             storage.discard();
             return None;
         };
+
+        if expected_length_data.last_inform_message == Some(context.message_id) {
+            storage.discard();
+            return None;
+        }
 
         let message_length = context.content.chars().count();
         let mut just_had_67 = false;
@@ -44,23 +52,33 @@ impl AprilFoolsChannel for ExactMessageLength {
     }
 
     async fn on_success(&self, context: &AprilFoolsMessageContext<'_>) -> crate::Result<()> {
-        let storage = GuildStorage::get_mut(context.guild_id).await;
-        let Some(expected_length) = storage
-            .april_fools_channels
-            .exact_message_length
-            .as_ref()
-            .and_then(|exact_message_length| exact_message_length.expected_length)
+        let mut storage = GuildStorage::get_mut(context.guild_id).await;
+        let Some(expected_length_data) = &mut storage.april_fools_channels.exact_message_length
         else {
+            storage.discard();
             return Ok(());
         };
-        context
+        let Some(expected_length) = expected_length_data.expected_length else {
+            storage.discard();
+            return Ok(());
+        };
+        let message = match context
             .channel_id
             .send_message(
                 &context.context,
                 CreateMessage::new()
                     .content(format!("Now expecting message length of {expected_length}")),
             )
-            .await?;
+            .await
+        {
+            Ok(message) => message,
+            Err(err) => {
+                storage.discard();
+                return Err(err.into());
+            }
+        };
+        expected_length_data.last_inform_message = Some(message.id);
+        storage.save().await;
         Ok(())
     }
 }
