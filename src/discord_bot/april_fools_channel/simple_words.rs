@@ -1,4 +1,5 @@
-use crate::discord_bot::april_fools_channel::AprilFoolsChannel;
+use crate::discord_bot::april_fools_channel::{AprilFoolsChannel, AprilFoolsMessageContext};
+use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -17,8 +18,10 @@ pub(crate) struct SimpleWordsChannel;
 
 pub(crate) static CHANNEL: SimpleWordsChannel = SimpleWordsChannel;
 
+#[async_trait]
 impl AprilFoolsChannel for SimpleWordsChannel {
-    fn get_error(&self, message: &str) -> Option<String> {
+    async fn get_error(&self, context: &AprilFoolsMessageContext<'_>) -> Option<String> {
+        let message = context.content;
         let mut illegal_words = Vec::new();
         let mut current_word_start = None;
         let mut prev_char = None;

@@ -1,7 +1,10 @@
+use crate::discord_bot::april_fools_channel::exact_message_length::ExactMessageLengthData;
 use crate::discord_bot::guild_storage::GuildStorage;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, Context, CreateMessage, GuildId, MessageFlags, MessageId, User};
 
+mod exact_message_length;
 mod haiku;
 mod simple_words;
 
@@ -22,6 +25,8 @@ pub(crate) struct AprilFoolsChannels {
     pub simple_words: Option<ChannelId>,
     #[serde(default)]
     pub haiku: Option<ChannelId>,
+    #[serde(default)]
+    pub exact_message_length: Option<ExactMessageLengthData>,
 }
 
 pub(crate) async fn get_april_fools_channel(
@@ -34,6 +39,12 @@ pub(crate) async fn get_april_fools_channel(
         Some(&simple_words::CHANNEL)
     } else if channels.haiku == Some(channel_id) {
         Some(&haiku::CHANNEL)
+    } else if channels
+        .exact_message_length
+        .as_ref()
+        .is_some_and(|exact_message_length| exact_message_length.channel == channel_id)
+    {
+        Some(&exact_message_length::CHANNEL)
     } else {
         None
     }
@@ -47,7 +58,7 @@ pub(crate) async fn on_message(
     let error_message = if context.has_attachments {
         Some(april_fools.has_attachment_message().to_owned())
     } else {
-        april_fools.get_error(context.content)
+        april_fools.get_error(&context).await
     };
     if let Some(mut error_message) = error_message {
         context
@@ -77,12 +88,15 @@ pub(crate) async fn on_message(
                     .await?;
             }
         }
+    } else {
+        april_fools.on_success(&context).await?;
     }
     Ok(())
 }
 
+#[async_trait]
 pub(crate) trait AprilFoolsChannel: Send + Sync {
-    fn get_error(&self, message: &str) -> Option<String>;
+    async fn get_error(&self, context: &AprilFoolsMessageContext<'_>) -> Option<String>;
 
     fn your_original_message_was(&self) -> Option<&'static str> {
         Some("Your original message was:")
@@ -90,5 +104,9 @@ pub(crate) trait AprilFoolsChannel: Send + Sync {
 
     fn has_attachment_message(&self) -> &'static str {
         "Message has attachment"
+    }
+
+    async fn on_success(&self, _context: &AprilFoolsMessageContext<'_>) -> crate::Result<()> {
+        Ok(())
     }
 }

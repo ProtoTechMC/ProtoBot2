@@ -1,6 +1,7 @@
-use crate::discord_bot::april_fools_channel::AprilFoolsChannel;
+use crate::discord_bot::april_fools_channel::{AprilFoolsChannel, AprilFoolsMessageContext};
 use arpabet::phoneme::Phoneme;
 use arpabet::{load_cmudict, Polyphone};
+use async_trait::async_trait;
 use std::collections::BTreeSet;
 use std::mem;
 
@@ -24,8 +25,10 @@ pub(crate) struct HaikuChannel;
 
 pub(crate) static CHANNEL: HaikuChannel = HaikuChannel;
 
+#[async_trait]
 impl AprilFoolsChannel for HaikuChannel {
-    fn get_error(&self, message: &str) -> Option<String> {
+    async fn get_error(&self, context: &AprilFoolsMessageContext<'_>) -> Option<String> {
+        let message = context.content;
         if !message.is_ascii() {
             return Some(INVALID_CHARACTER.to_owned());
         }
