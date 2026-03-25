@@ -72,7 +72,7 @@ impl AprilFoolsChannel for ExactMessageLength {
 }
 
 fn reroll_message_length(just_had_67: bool) -> u16 {
-    if !just_had_67 && rand::random::<bool>() {
+    if !just_had_67 && rand::random_range(0..4) == 0 {
         67
     } else {
         let length = rand::random_range(5..=99);
