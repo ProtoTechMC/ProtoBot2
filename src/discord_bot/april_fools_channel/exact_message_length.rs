@@ -21,62 +21,50 @@ pub(crate) struct ExactMessageLengthData {
 #[async_trait]
 impl AprilFoolsChannel for ExactMessageLength {
     async fn get_error(&self, context: &AprilFoolsMessageContext<'_>) -> Option<String> {
-        let mut storage = GuildStorage::get_mut(context.guild_id).await;
-        let Some(expected_length_data) = &mut storage.april_fools_channels.exact_message_length
-        else {
-            storage.discard();
+        let storage = GuildStorage::get(context.guild_id).await;
+        let Some(expected_length_data) = &storage.april_fools_channels.exact_message_length else {
             return None;
         };
 
         if expected_length_data.last_inform_message == Some(context.message_id) {
-            storage.discard();
             return None;
         }
 
         let message_length = context.content.chars().count();
-        let mut just_had_67 = false;
 
         if let Some(expected_length) = expected_length_data.expected_length {
             if expected_length as usize != message_length {
-                storage.discard();
                 return Some(format!("Your message was the wrong length! Expected length {expected_length} but it was {message_length}."));
             }
-
-            just_had_67 = expected_length == 67;
         }
 
-        let new_length = reroll_message_length(just_had_67);
-        expected_length_data.expected_length = Some(new_length);
-        storage.save().await;
         None
     }
 
     async fn on_success(&self, context: &AprilFoolsMessageContext<'_>) -> crate::Result<()> {
+        let just_had_67 = GuildStorage::get(context.guild_id)
+            .await
+            .april_fools_channels
+            .exact_message_length
+            .as_ref()
+            .and_then(|exact_message_length| exact_message_length.expected_length)
+            == Some(67);
+        let new_length = reroll_message_length(just_had_67);
+        let message = context
+            .channel_id
+            .send_message(
+                &context.context,
+                CreateMessage::new()
+                    .content(format!("Now expecting message length of {new_length}")),
+            )
+            .await?;
         let mut storage = GuildStorage::get_mut(context.guild_id).await;
         let Some(expected_length_data) = &mut storage.april_fools_channels.exact_message_length
         else {
             storage.discard();
             return Ok(());
         };
-        let Some(expected_length) = expected_length_data.expected_length else {
-            storage.discard();
-            return Ok(());
-        };
-        let message = match context
-            .channel_id
-            .send_message(
-                &context.context,
-                CreateMessage::new()
-                    .content(format!("Now expecting message length of {expected_length}")),
-            )
-            .await
-        {
-            Ok(message) => message,
-            Err(err) => {
-                storage.discard();
-                return Err(err.into());
-            }
-        };
+        expected_length_data.expected_length = Some(new_length);
         expected_length_data.last_inform_message = Some(message.id);
         storage.save().await;
         Ok(())
