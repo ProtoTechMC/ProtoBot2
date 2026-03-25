@@ -1,3 +1,4 @@
+use crate::discord_bot::april_fools_channel::AprilFoolsChannels;
 use crate::discord_bot::chess::ChessState;
 use crate::discord_bot::permanent_latest::PermanentLatestInfo;
 use crate::discord_bot::role::RoleData;
@@ -50,6 +51,8 @@ pub struct GuildStorage {
     pub counters: HashMap<String, u64>,
     #[serde(default)]
     pub social_credit: HashMap<UserId, i32>,
+    #[serde(default)]
+    pub april_fools_channels: AprilFoolsChannels,
 }
 
 impl Default for GuildStorage {
@@ -69,6 +72,7 @@ impl Default for GuildStorage {
             users_sent_to_support: HashSet::new(),
             counters: HashMap::new(),
             social_credit: HashMap::new(),
+            april_fools_channels: AprilFoolsChannels::default(),
         }
     }
 }

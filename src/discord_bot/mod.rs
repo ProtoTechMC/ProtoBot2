@@ -16,7 +16,9 @@ mod update_copy;
 mod welcome_message;
 
 use crate::config;
-use crate::discord_bot::april_fools_channel::{get_april_fools_channel, AprilFoolsChannel};
+use crate::discord_bot::april_fools_channel::{
+    get_april_fools_channel, AprilFoolsChannel, AprilFoolsMessageContext,
+};
 use crate::discord_bot::guild_storage::GuildStorage;
 use crate::pterodactyl::{tellraw, PterodactylChatBridge, PterodactylServer};
 use async_trait::async_trait;
@@ -318,7 +320,9 @@ impl EventHandler for Handler {
             let config = config::get();
 
             let message_handling = {
-                if let Some(april_fools_channel) = get_april_fools_channel(new_message.channel_id) {
+                if let Some(april_fools_channel) =
+                    get_april_fools_channel(guild_id, new_message.channel_id).await
+                {
                     MessageHandling::AprilFools(april_fools_channel)
                 } else if new_message.author.bot {
                     return;
@@ -373,13 +377,16 @@ impl EventHandler for Handler {
                 }
                 MessageHandling::AprilFools(april_fools) => {
                     april_fools_channel::on_message(
-                        ctx,
                         april_fools,
-                        !new_message.attachments.is_empty(),
-                        &new_message.content,
-                        &new_message.author,
-                        new_message.channel_id,
-                        new_message.id,
+                        AprilFoolsMessageContext {
+                            context: ctx,
+                            has_attachments: !new_message.attachments.is_empty(),
+                            content: &new_message.content,
+                            author: &new_message.author,
+                            guild_id,
+                            channel_id: new_message.channel_id,
+                            message_id: new_message.id,
+                        },
                     )
                     .await
                 }
@@ -399,10 +406,15 @@ impl EventHandler for Handler {
         _new: Option<Message>,
         event: MessageUpdateEvent,
     ) {
+        let Some(guild_id) = event.guild_id else {
+            return;
+        };
+
         enum MessageEditHandling {
             AprilFools(&'static dyn AprilFoolsChannel),
         }
-        let handling = if let Some(april_fools_channel) = get_april_fools_channel(event.channel_id)
+        let handling = if let Some(april_fools_channel) =
+            get_april_fools_channel(guild_id, event.channel_id).await
         {
             MessageEditHandling::AprilFools(april_fools_channel)
         } else {
@@ -418,17 +430,20 @@ impl EventHandler for Handler {
             if let Err(err) = match handling {
                 MessageEditHandling::AprilFools(april_fools) => {
                     april_fools_channel::on_message(
-                        ctx,
                         april_fools,
-                        event
-                            .attachments
-                            .as_ref()
-                            .map(|attachments| attachments.is_empty())
-                            == Some(false),
-                        &content,
-                        &author,
-                        event.channel_id,
-                        event.id,
+                        AprilFoolsMessageContext {
+                            context: ctx,
+                            has_attachments: event
+                                .attachments
+                                .as_ref()
+                                .map(|attachments| attachments.is_empty())
+                                == Some(false),
+                            content: &content,
+                            author: &author,
+                            guild_id,
+                            channel_id: event.channel_id,
+                            message_id: event.id,
+                        },
                     )
                     .await
                 }

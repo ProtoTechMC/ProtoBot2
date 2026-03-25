@@ -107,10 +107,6 @@ impl Config {
 pub struct SpecialChannels {
     pub applications: ChannelId,
     pub support: ChannelId,
-    #[serde(default)]
-    pub simple_words: Option<ChannelId>,
-    #[serde(default)]
-    pub haiku: Option<ChannelId>,
 }
 
 #[derive(Deserialize)]
