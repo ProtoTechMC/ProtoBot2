@@ -60,7 +60,7 @@ async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crat
             ctx,
             format!(
                 "{}permanent_latest <add|remove> ...",
-                &storage.command_prefix
+                storage.command_prefix
             ),
         )
         .await?;
@@ -91,7 +91,7 @@ pub(crate) async fn on_configure_command(
                         ctx,
                         format!(
                             "{}permanent_latest add <channel-id> <message>",
-                            &storage.command_prefix
+                            storage.command_prefix
                         ),
                     )
                     .await?;
@@ -151,7 +151,7 @@ pub(crate) async fn on_configure_command(
                         ctx,
                         format!(
                             "{}permanent_latest remove <channel-id>",
-                            &storage.command_prefix
+                            storage.command_prefix
                         ),
                     )
                     .await?;
