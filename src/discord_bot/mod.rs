@@ -262,7 +262,7 @@ impl EventHandler for Handler {
 
         if let Some(welcome_message_data) = storage.welcome_message.clone() {
             tokio::runtime::Handle::current().spawn(async move {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(5)).await;
                 if let Err(err) = welcome_message_data
                     .channel
                     .send_message(
