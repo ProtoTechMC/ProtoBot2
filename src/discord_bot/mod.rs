@@ -42,6 +42,7 @@ use serenity::model::user::User;
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 pub(crate) type Handle = Arc<Http>;
@@ -259,21 +260,24 @@ impl EventHandler for Handler {
             }
         }
 
-        if let Some(welcome_message_data) = &storage.welcome_message {
-            if let Err(err) = welcome_message_data
-                .channel
-                .send_message(
-                    &ctx,
-                    CreateMessage::new().content(
-                        welcome_message_data
-                            .message
-                            .replace("[user]", &format!("<@{}>", new_member.user.id)),
-                    ),
-                )
-                .await
-            {
-                error!("Failed to send welcome message: {}", err);
-            }
+        if let Some(welcome_message_data) = storage.welcome_message.clone() {
+            tokio::runtime::Handle::current().spawn(async move {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                if let Err(err) = welcome_message_data
+                    .channel
+                    .send_message(
+                        &ctx,
+                        CreateMessage::new().content(
+                            welcome_message_data
+                                .message
+                                .replace("[user]", &format!("<@{}>", new_member.user.id)),
+                        ),
+                    )
+                    .await
+                {
+                    error!("Failed to send welcome message: {}", err);
+                }
+            });
         }
     }
 
