@@ -104,6 +104,11 @@ async fn handle_chat_message(
                             .await?;
                     }
                 }
+                "whyisptbafk" => {
+                    ptero_server
+                        .send_command("scoreboard objectives setdisplay sidebar g.sleepinbed")
+                        .await?;
+                }
                 "backup" => {
                     create_backup(
                         ptero_server,
