@@ -322,7 +322,7 @@ impl EventHandler for Handler {
             let new_message = new_message.clone();
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(err) = ActivityTracker::instance()
-                    .on_message(guild_id, ctx, new_message)
+                    .on_message(own_id, guild_id, ctx, new_message)
                     .await
                 {
                     error!("Error processing activity tracker: {}", err);

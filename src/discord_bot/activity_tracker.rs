@@ -33,10 +33,15 @@ impl ActivityTracker {
 
     pub async fn on_message(
         &self,
+        own_id: UserId,
         guild_id: GuildId,
         ctx: Context,
         message: Message,
     ) -> crate::Result<()> {
+        if message.author.id == own_id {
+            return Ok(());
+        }
+
         let config = config::get();
         if !message
             .author
