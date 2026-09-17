@@ -1,3 +1,4 @@
+mod activity_tracker;
 mod april_fools_channel;
 mod brainfuck;
 mod chess;
@@ -16,6 +17,7 @@ mod update_copy;
 mod welcome_message;
 
 use crate::config;
+use crate::discord_bot::activity_tracker::ActivityTracker;
 use crate::discord_bot::april_fools_channel::{
     get_april_fools_channel, AprilFoolsChannel, AprilFoolsMessageContext,
 };
@@ -314,6 +316,19 @@ impl EventHandler for Handler {
         let pterodactyl = self.pterodactyl.clone();
         let webhook_cache = self.webhook_cache.clone();
         let own_id = self.own_id.read().await.unwrap();
+
+        {
+            let ctx = ctx.clone();
+            let new_message = new_message.clone();
+            tokio::runtime::Handle::current().spawn(async move {
+                if let Err(err) = ActivityTracker::instance()
+                    .on_message(guild_id, ctx, new_message)
+                    .await
+                {
+                    error!("Error processing activity tracker: {}", err);
+                }
+            });
+        }
 
         tokio::runtime::Handle::current().spawn(async move {
             enum MessageHandling<'a> {

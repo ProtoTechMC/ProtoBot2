@@ -3,6 +3,7 @@ mod config;
 mod discord_bot;
 mod pterodactyl;
 mod stdin;
+mod utils;
 mod webserver;
 
 use flexi_logger::filter::{LogLineFilter, LogLineWriter};

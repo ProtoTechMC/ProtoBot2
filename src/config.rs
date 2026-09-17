@@ -112,5 +112,7 @@ pub struct SpecialChannels {
 #[derive(Deserialize)]
 pub struct SpecialRoles {
     pub panel_access: RoleId,
+    pub member: RoleId,
+    pub trial_member: RoleId,
     pub channel_access: RoleId,
 }

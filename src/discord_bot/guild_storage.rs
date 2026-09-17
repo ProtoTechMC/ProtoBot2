@@ -119,15 +119,14 @@ impl GuildStorage {
                     warn!("Failed to create guild storage directory: {}", err);
                     return;
                 }
-                let new_name = format!("storage/{}.json_new", guild_id);
-                if let Err(err) = tokio::fs::write(&new_name, str.as_bytes()).await {
-                    warn!("Failed to save guild storage: {}", err);
-                    return;
-                }
-                if let Err(err) =
-                    tokio::fs::rename(new_name, format!("storage/{}.json", guild_id)).await
+                if let Err(err) = crate::utils::write_safe(
+                    format!("storage/{guild_id}.json"),
+                    format!("storage/{guild_id}.json_new"),
+                    str.as_bytes(),
+                )
+                .await
                 {
-                    warn!("Failed to save guild storage: {}", err);
+                    warn!("Failed to save guild storage: {err}");
                 }
             }
             Err(err) => warn!("Failed to serialize json: {}", err),
