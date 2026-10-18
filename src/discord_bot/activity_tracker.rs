@@ -39,7 +39,7 @@ impl ActivityTracker {
         ctx: Context,
         message: Message,
     ) -> crate::Result<()> {
-        if message.author.id == own_id {
+        if message.author.id == own_id || message.webhook_id.is_some() {
             return Ok(());
         }
 
