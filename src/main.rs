@@ -6,18 +6,20 @@ mod stdin;
 mod utils;
 mod webserver;
 
-use flexi_logger::filter::{LogLineFilter, LogLineWriter};
-use flexi_logger::{
-    Age, Cleanup, Criterion, DeferredNow, Duplicate, FileSpec, Logger, Naming, WriteMode,
-};
+use flexi_logger::writers::{FileLogWriter, FileLogWriterHandle};
+use flexi_logger::{Age, Cleanup, Criterion, FileSpec, Naming, WriteMode};
 use git_version::git_version;
 use hyper::http;
-use log::{error, info, Level, Record};
 use pterodactyl::smp_commands;
+use std::backtrace::Backtrace;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, OnceLock};
 use std::{env, io, thread};
 use tokio::sync::Semaphore;
+use tracing::level_filters::LevelFilter;
+use tracing::{error, info};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -33,8 +35,16 @@ enum Error {
     Join(#[from] tokio::task::JoinError),
     #[error("Json Error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("Discord Error: {0}")]
-    Serenity(#[from] Box<serenity::Error>),
+    #[error("Discord HTTP Error: {0}")]
+    DiscordHttp(#[from] Box<twilight_http::Error>),
+    #[error("Discord Deserialize Error: {0}")]
+    DiscordDeserialize(#[from] Box<twilight_http::response::DeserializeBodyError>),
+    #[error("Discord Image Source Error: {0}")]
+    DiscordImageSource(
+        #[from] Box<twilight_util::builder::embed::image_source::ImageSourceUrlError>,
+    ),
+    #[error("Webhook Parse Error: {0}")]
+    WebhookParse(#[from] Box<twilight_util::link::webhook::WebhookParseError>),
     #[error("Utf8 Error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
     #[error("UUID Error: {0}")]
@@ -60,7 +70,13 @@ macro_rules! boxed_from {
     }
 }
 
-boxed_from!(serenity::Error, pterodactyl_api::Error);
+boxed_from!(
+    twilight_http::Error,
+    twilight_http::response::DeserializeBodyError,
+    twilight_util::builder::embed::image_source::ImageSourceUrlError,
+    twilight_util::link::webhook::WebhookParseError,
+    pterodactyl_api::Error,
+);
 
 #[derive(Clone)]
 pub struct ProtobotData {
@@ -88,44 +104,72 @@ pub async fn wait_shutdown() {
     let _ = shutdown_semaphore().acquire().await.unwrap();
 }
 
-fn main() {
-    struct SerenityFilter;
-    impl LogLineFilter for SerenityFilter {
-        fn write(
-            &self,
-            now: &mut DeferredNow,
-            record: &Record,
-            log_line_writer: &dyn LogLineWriter,
-        ) -> io::Result<()> {
-            let mut should_log = true;
-            if let Some(module_path) = record.module_path() {
-                if module_path.starts_with("serenity") {
-                    should_log = record.level() < Level::Info;
-                }
-            }
-            if should_log {
-                log_line_writer.write(now, record)
-            } else {
-                Ok(())
-            }
-        }
-    }
-    let _logger = Logger::try_with_str("info")
-        .unwrap()
-        .use_utc()
-        .format(flexi_logger::opt_format)
-        .filter(Box::new(SerenityFilter))
-        .log_to_file(FileSpec::default().directory("logs"))
-        .write_mode(WriteMode::BufferAndFlush)
-        .duplicate_to_stderr(Duplicate::All)
-        .rotate(
-            Criterion::Age(Age::Day),
-            Naming::Timestamps,
-            Cleanup::KeepLogAndCompressedFiles(1, 20),
+/// Sets up logging to stderr and to rotating log files. The returned handle must be kept alive
+/// until the end of the program, so that the log file is flushed.
+fn init_logging() -> FileLogWriterHandle {
+    let (file_writer, file_writer_handle) =
+        FileLogWriter::builder(FileSpec::default().directory("logs"))
+            .write_mode(WriteMode::BufferAndFlush)
+            .rotate(
+                Criterion::Age(Age::Day),
+                Naming::Timestamps,
+                Cleanup::KeepLogAndCompressedFiles(1, 20),
+            )
+            .try_build_with_handle()
+            .expect("Failed to initialize log file writer");
+
+    tracing_subscriber::registry()
+        .with(LevelFilter::INFO)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_file(true)
+                .with_line_number(true)
+                .with_writer(move || file_writer.clone()),
         )
-        .start()
-        .expect("Failed to initialize logger");
-    log_panics::init();
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_file(true)
+                .with_line_number(true)
+                .with_writer(io::stderr),
+        )
+        .init();
+
+    file_writer_handle
+}
+
+/// Logs panics instead of printing them to stderr, so that they also end up in the log files.
+fn init_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let thread = thread::current();
+        let thread_name = thread.name().unwrap_or("<unnamed>");
+        let message = info.payload_as_str().unwrap_or("Box<dyn Any>");
+        let backtrace = Backtrace::force_capture();
+        match info.location() {
+            Some(location) => error!(
+                target: "panic",
+                "thread '{}' panicked at '{}': {}:{}\n{}",
+                thread_name,
+                message,
+                location.file(),
+                location.line(),
+                backtrace
+            ),
+            None => error!(
+                target: "panic",
+                "thread '{}' panicked at '{}'\n{}",
+                thread_name,
+                message,
+                backtrace
+            ),
+        }
+    }));
+}
+
+fn main() {
+    let _log_handle = init_logging();
+    init_panic_hook();
 
     if let Err(err) = ctrlc::set_handler(shutdown) {
         error!("Could not set Ctrl-C handler: {}", err);
@@ -155,7 +199,7 @@ fn main() {
     };
 
     let protobot_data = ProtobotData {
-        discord_handle: discord_bot.http.clone(),
+        discord_handle: discord_bot.ctx.http.clone(),
         pterodactyl,
     };
 

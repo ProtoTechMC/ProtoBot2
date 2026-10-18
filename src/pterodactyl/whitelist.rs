@@ -2,12 +2,12 @@ use crate::pterodactyl::{send_command_safe, PterodactylServerCategory};
 use crate::{config, ProtobotData};
 use futures::future::try_join_all;
 use git_version::git_version;
-use log::{error, info};
 use serde::de::value::StrDeserializer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::future::Future;
 use tokio::sync::OnceCell;
+use tracing::{error, info};
 use uuid::Uuid;
 
 pub(crate) async fn run(

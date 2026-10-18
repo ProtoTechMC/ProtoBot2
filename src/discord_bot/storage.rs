@@ -1,4 +1,5 @@
 use crate::discord_bot::commands::check_admin;
+use crate::discord_bot::context::Context;
 use crate::discord_bot::guild_storage::GuildStorage;
 use nom::branch::alt;
 use nom::bytes::complete::escaped_transform;
@@ -8,11 +9,11 @@ use nom::error::ErrorKind;
 use nom::multi::{many1, separated_list1};
 use nom::sequence::{delimited, preceded};
 use nom::{AsChar, Finish, Parser};
-use serenity::client::Context;
-use serenity::json::Value;
-use serenity::model::channel::Message;
-use serenity::model::id::GuildId;
+use serde_json::Value;
 use std::borrow::Cow;
+use twilight_model::channel::Message;
+use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::Id;
 
 fn parse_path(args: &str) -> Result<(&str, Vec<Cow<'_, str>>), ()> {
     delimited(
@@ -79,11 +80,10 @@ fn parse_path(args: &str) -> Result<(&str, Vec<Cow<'_, str>>), ()> {
 
 async fn output_raw_data(data: &str, ctx: Context, message: &Message) -> crate::Result<()> {
     if data.len() > 1980 {
-        message
-            .reply(ctx, format!("```\n{}...\n```", &data[..1980]))
+        ctx.reply(message, format!("```\n{}...\n```", &data[..1980]))
             .await?;
     } else {
-        message.reply(ctx, format!("```\n{}\n```", data)).await?;
+        ctx.reply(message, format!("```\n{}\n```", data)).await?;
     }
 
     Ok(())
@@ -141,7 +141,7 @@ fn follow_path_mut<'a>(
 
 async fn get_data(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -151,7 +151,7 @@ async fn get_data(
         match parse_path(args) {
             Ok(("", path)) => path,
             _ => {
-                message.reply(ctx, "Syntax error").await?;
+                ctx.reply(message, "Syntax error").await?;
                 return Ok(());
             }
         }
@@ -161,8 +161,7 @@ async fn get_data(
     let json = match serde_json::to_value(&*storage) {
         Ok(json) => json,
         Err(err) => {
-            message
-                .reply(ctx, format!("Error serializing storage: {}", err))
+            ctx.reply(message, format!("Error serializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -171,7 +170,7 @@ async fn get_data(
     let json = match follow_path(json, path) {
         Ok(json) => json,
         Err(err) => {
-            message.reply(ctx, err).await?;
+            ctx.reply(message, err).await?;
             return Ok(());
         }
     };
@@ -179,8 +178,7 @@ async fn get_data(
     let str = match serde_json::to_string(&json) {
         Ok(str) => str,
         Err(err) => {
-            message
-                .reply(ctx, format!("Error serializing storage: {}", err))
+            ctx.reply(message, format!("Error serializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -193,7 +191,7 @@ async fn get_data(
 
 async fn set_data(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -205,7 +203,7 @@ async fn set_data(
     }) {
         Some(value_path) => value_path,
         None => {
-            message.reply(ctx, "Syntax error").await?;
+            ctx.reply(message, "Syntax error").await?;
             return Ok(());
         }
     };
@@ -215,8 +213,7 @@ async fn set_data(
         Ok(root_json) => root_json,
         Err(err) => {
             storage.discard();
-            message
-                .reply(ctx, format!("Error serializing storage: {}", err))
+            ctx.reply(message, format!("Error serializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -225,7 +222,7 @@ async fn set_data(
         Ok(json) => json,
         Err(err) => {
             storage.discard();
-            message.reply(ctx, err).await?;
+            ctx.reply(message, err).await?;
             return Ok(());
         }
     };
@@ -236,8 +233,7 @@ async fn set_data(
         Ok(storage) => storage,
         Err(err) => {
             storage.discard();
-            message
-                .reply(ctx, format!("Error deserializing storage: {}", err))
+            ctx.reply(message, format!("Error deserializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -245,21 +241,21 @@ async fn set_data(
 
     storage.save().await;
 
-    message.reply(ctx, "Data stored").await?;
+    ctx.reply(message, "Data stored").await?;
 
     Ok(())
 }
 
 async fn delete_data(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     let mut path = match parse_path(args) {
         Ok(("", path)) => path,
         _ => {
-            message.reply(ctx, "Syntax error").await?;
+            ctx.reply(message, "Syntax error").await?;
             return Ok(());
         }
     };
@@ -272,8 +268,7 @@ async fn delete_data(
         Ok(root_json) => root_json,
         Err(err) => {
             storage.discard();
-            message
-                .reply(ctx, format!("Error serializing storage: {}", err))
+            ctx.reply(message, format!("Error serializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -282,7 +277,7 @@ async fn delete_data(
         Ok(json) => json,
         Err(err) => {
             storage.discard();
-            message.reply(ctx, err).await?;
+            ctx.reply(message, err).await?;
             return Ok(());
         }
     };
@@ -291,12 +286,11 @@ async fn delete_data(
         Value::Object(map) => {
             if map.remove(last_name.as_ref()).is_none() {
                 storage.discard();
-                message
-                    .reply(
-                        ctx,
-                        format!("Could not find \"{last_name}\" in json object"),
-                    )
-                    .await?;
+                ctx.reply(
+                    message,
+                    format!("Could not find \"{last_name}\" in json object"),
+                )
+                .await?;
                 return Ok(());
             }
         }
@@ -310,17 +304,21 @@ async fn delete_data(
             }
             None => {
                 storage.discard();
-                message
-                    .reply(ctx, format!("Could not find \"{last_name}\" in json array"))
-                    .await?;
+                ctx.reply(
+                    message,
+                    format!("Could not find \"{last_name}\" in json array"),
+                )
+                .await?;
                 return Ok(());
             }
         },
         _ => {
             storage.discard();
-            message
-                .reply(ctx, format!("Could not find \"{last_name}\" in json value"))
-                .await?;
+            ctx.reply(
+                message,
+                format!("Could not find \"{last_name}\" in json value"),
+            )
+            .await?;
             return Ok(());
         }
     }
@@ -329,8 +327,7 @@ async fn delete_data(
         Ok(storage) => storage,
         Err(err) => {
             storage.discard();
-            message
-                .reply(ctx, format!("Error deserializing storage: {}", err))
+            ctx.reply(message, format!("Error deserializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -338,14 +335,14 @@ async fn delete_data(
 
     storage.save().await;
 
-    message.reply(ctx, "Data deleted").await?;
+    ctx.reply(message, "Data deleted").await?;
 
     Ok(())
 }
 
 async fn list_data(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -355,7 +352,7 @@ async fn list_data(
         match parse_path(args) {
             Ok(("", path)) => path,
             _ => {
-                message.reply(ctx, "Syntax error").await?;
+                ctx.reply(message, "Syntax error").await?;
                 return Ok(());
             }
         }
@@ -365,8 +362,7 @@ async fn list_data(
     let json = match serde_json::to_value(&*storage) {
         Ok(json) => json,
         Err(err) => {
-            message
-                .reply(ctx, format!("Error serializing storage: {}", err))
+            ctx.reply(message, format!("Error serializing storage: {}", err))
                 .await?;
             return Ok(());
         }
@@ -375,7 +371,7 @@ async fn list_data(
     let json = match follow_path(json, path) {
         Ok(json) => json,
         Err(err) => {
-            message.reply(ctx, err).await?;
+            ctx.reply(message, err).await?;
             return Ok(());
         }
     };
@@ -410,16 +406,14 @@ async fn list_data(
                 keys_left -= 1;
             }
 
-            message.reply(ctx, lines.join("\n")).await?;
+            ctx.reply(message, lines.join("\n")).await?;
         }
         Value::Array(array) => {
-            message
-                .reply(ctx, format!("Array has length {}", array.len()))
+            ctx.reply(message, format!("Array has length {}", array.len()))
                 .await?;
         }
         _ => {
-            message
-                .reply(ctx, "Can only list keys on json objects and arrays")
+            ctx.reply(message, "Can only list keys on json objects and arrays")
                 .await?;
         }
     }
@@ -427,29 +421,32 @@ async fn list_data(
     Ok(())
 }
 
-async fn print_help(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+async fn print_help(
+    guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
     let storage = GuildStorage::get(guild_id).await;
     let prefix = &storage.command_prefix;
-    message
-        .reply(
-            ctx,
-            format!(
-                "```\n\
+    ctx.reply(
+        message,
+        format!(
+            "```\n\
                 Usage:\n\
                 {prefix}storage get path.to.data\n\
                 {prefix}storage set path.to.data=newValue\n\
                 {prefix}storage delete path.to.data\n\
                 {prefix}storage list\n\
                 ```"
-            ),
-        )
-        .await?;
+        ),
+    )
+    .await?;
     Ok(())
 }
 
 pub(crate) async fn run(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {

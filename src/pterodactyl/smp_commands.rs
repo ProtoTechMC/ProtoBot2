@@ -1,8 +1,6 @@
 use crate::pterodactyl::{tellraw, PterodactylServer};
 use crate::{config, discord_bot, ProtobotData};
-use dashmap::{DashMap, Entry};
 use futures::future::try_join_all;
-use log::{error, info, warn};
 use nom::bytes::complete::{tag, take_until1};
 use nom::character::complete::{anychar, char, digit1};
 use nom::combinator::{map, recognize};
@@ -11,10 +9,8 @@ use nom::{Finish, Parser};
 use pterodactyl_api::client::backups::{Backup, BackupParams};
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use pterodactyl_api::client::ServerState;
-use serenity::builder::ExecuteWebhook;
-use serenity::model::webhook::Webhook;
 use std::borrow::Cow;
-use std::sync::Arc;
+use tracing::{error, info, warn};
 
 pub(crate) async fn create_backup(
     server: &pterodactyl_api::client::Server<'_>,
@@ -56,7 +52,6 @@ pub(crate) async fn create_backup(
 
 async fn handle_chat_message(
     data: &ProtobotData,
-    webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
     ptero_server: &pterodactyl_api::client::Server<'_>,
     sender: &str,
@@ -134,7 +129,6 @@ async fn handle_chat_message(
     broadcast_message(
         &data.discord_handle,
         &data.pterodactyl,
-        webhook_cache,
         ptero_server_id,
         Some(sender),
         false,
@@ -147,7 +141,6 @@ async fn handle_chat_message(
 
 async fn handle_log_message(
     data: &ProtobotData,
-    webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
     message: &str,
 ) -> crate::Result<()> {
@@ -165,7 +158,6 @@ async fn handle_log_message(
         broadcast_message(
             &data.discord_handle,
             &data.pterodactyl,
-            webhook_cache,
             ptero_server_id,
             Some(&sanitized_username),
             true,
@@ -179,7 +171,6 @@ async fn handle_log_message(
 
 async fn handle_server_log(
     data: &ProtobotData,
-    webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
     ptero_server: &pterodactyl_api::client::Server<'_>,
     message: &str,
@@ -206,7 +197,6 @@ async fn handle_server_log(
     if let Ok((_, (sender, message))) = parse_result {
         handle_chat_message(
             data,
-            webhook_cache,
             ptero_server_id,
             ptero_server,
             &sanitize_username(sender, true),
@@ -234,7 +224,7 @@ async fn handle_server_log(
     .parse(message)
     .finish();
     if let Ok((_, log_message)) = parse_result {
-        handle_log_message(data, webhook_cache, ptero_server_id, log_message).await?;
+        handle_log_message(data, ptero_server_id, log_message).await?;
     }
 
     Ok(())
@@ -243,7 +233,6 @@ async fn handle_server_log(
 async fn broadcast_message(
     discord_handle: &discord_bot::Handle,
     pterodactyl: &pterodactyl_api::client::Client,
-    webhook_cache: &DashMap<String, Webhook>,
     ptero_server_id: &str,
     username: Option<&str>,
     system_message: bool,
@@ -325,7 +314,6 @@ async fn broadcast_message(
     try_join_all(chat_bridge.discord_channels.iter().map(|channel| {
         broadcast_to_discord(
             discord_handle,
-            webhook_cache,
             &channel.webhook,
             &discord_sender,
             username,
@@ -338,26 +326,21 @@ async fn broadcast_message(
 
 async fn broadcast_to_discord(
     discord_handle: &discord_bot::Handle,
-    webhook_cache: &DashMap<String, Webhook>,
     webhook: &str,
     sender: &str,
     avatar_username: Option<&str>,
     message: &str,
 ) -> crate::Result<()> {
-    let webhook = match webhook_cache.entry(webhook.to_owned()) {
-        Entry::Occupied(entry) => entry.get().clone(),
-        Entry::Vacant(entry) => entry
-            .insert(Webhook::from_url(discord_handle, webhook).await?)
-            .clone(),
-    };
-    let mut execute_webhook = ExecuteWebhook::new().content(message).username(sender);
-    if let Some(username) = avatar_username {
-        execute_webhook = execute_webhook.avatar_url(avatar_url(username));
-    }
-    webhook
-        .execute(discord_handle, false, execute_webhook)
-        .await?;
-    Ok(())
+    let avatar_url = avatar_username.map(avatar_url);
+    discord_bot::execute_webhook(
+        discord_handle,
+        webhook,
+        message,
+        sender,
+        avatar_url.as_deref(),
+        &[],
+    )
+    .await
 }
 
 fn avatar_url(username: &str) -> String {
@@ -411,7 +394,6 @@ struct WebsocketListener<'a> {
     data: ProtobotData,
     ptero_server_id: &'a str,
     last_server_status: Option<ServerState>,
-    webhook_cache: Arc<DashMap<String, Webhook>>,
 }
 
 impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_> {
@@ -423,17 +405,10 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
         let output = output.to_owned();
         let data = self.data.clone();
         let ptero_server_id = self.ptero_server_id.to_owned();
-        let webhook_cache = self.webhook_cache.clone();
         tokio::runtime::Handle::current().spawn(async move {
             let ptero_server = data.pterodactyl.get_server(&ptero_server_id);
-            if let Err(err) = handle_server_log(
-                &data,
-                &webhook_cache,
-                &ptero_server_id,
-                &ptero_server,
-                &output,
-            )
-            .await
+            if let Err(err) =
+                handle_server_log(&data, &ptero_server_id, &ptero_server, &output).await
             {
                 error!("Error handling console output: {}", err);
             }
@@ -460,13 +435,11 @@ impl<H: PteroWebSocketHandle> PteroWebSocketListener<H> for WebsocketListener<'_
         };
 
         let data = self.data.clone();
-        let webhook_cache = self.webhook_cache.clone();
         let ptero_server_id = self.ptero_server_id.to_owned();
         tokio::runtime::Handle::current().spawn(async move {
             if let Err(err) = broadcast_message(
                 &data.discord_handle,
                 &data.pterodactyl,
-                &webhook_cache,
                 &ptero_server_id,
                 None,
                 true,
@@ -487,7 +460,6 @@ pub(crate) async fn run(server: PterodactylServer, data: ProtobotData) -> crate:
         data: data.clone(),
         ptero_server_id: &server.id,
         last_server_status: None,
-        webhook_cache: Arc::new(DashMap::new()),
     };
     let ptero_server = data.pterodactyl.get_server(&server.id);
     tokio::select! {

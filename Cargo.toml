@@ -6,28 +6,32 @@ edition = "2021"
 [dependencies]
 arpabet = "2.0.0"
 async-trait = "0.1"
-async-tungstenite = { version = "0.28", features = ["tokio-runtime", "tokio-native-tls"] }
-chrono = { version = "0.4", features = ["serde"] }
+async-tungstenite = { version = "0.35", features = ["tokio-runtime", "tokio-native-tls"] }
+chrono = { version = "0.4.45", features = ["serde"] }
 ctrlc = "3.5"
 dashmap = "6.1"
 flexi_logger = { version = "0.31", default-features = false, features = ["compress"] }
 futures = "0.3"
 git-version = "0.3"
 http-body-util = "0.1"
-hyper = { version = "1.5", features = ["http1", "server"] }
+hyper = { version = "1.12", features = ["http1", "server"] }
 hyper-util = "0.1"
-linkify = "0.10"
-log = "0.4"
-log-panics = "2.1"
+linkify = "0.11"
 nom = "8.0"
-pterodactyl_api = { version = "0.2", features = ["websocket"] }
-rand = "0.9"
-reqwest = { version = "0.12", features = ["json"] }
-scraper = "0.25"
+pterodactyl_api = { version = "0.3", features = ["websocket"] }
+rand = "0.10"
+reqwest = { version = "0.13", features = ["json"] }
+scraper = "0.27"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serenity = { version = "0.12", default-features = false, features = ["cache", "chrono", "client", "gateway", "rustls_backend", "model"] }
 thiserror = "2.0"
-tokio = { version = "1.41", features = ["fs", "io-std", "macros", "rt-multi-thread", "time"] }
+twilight-cache-inmemory = "0.17"
+twilight-gateway = "0.17"
+twilight-http = "0.17"
+twilight-model = "0.17"
+twilight-util = { version = "0.17", features = ["builder", "link"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+tokio = { version = "1.53", features = ["fs", "io-std", "macros", "rt-multi-thread", "time"] }
 urlencoding = "2.1"
-uuid = { version = "1.11", features = ["serde"] }
+uuid = { version = "1.28", features = ["serde"] }

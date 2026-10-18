@@ -2,8 +2,8 @@ use crate::discord_bot::april_fools_channel::{AprilFoolsChannel, AprilFoolsMessa
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serenity::all::ChannelId;
-use serenity::builder::CreateMessage;
+use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::Id;
 
 pub(crate) struct ExactMessageLength;
 
@@ -11,7 +11,7 @@ pub(crate) static CHANNEL: ExactMessageLength = ExactMessageLength;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub(crate) struct ExactMessageLengthData {
-    pub channel: ChannelId,
+    pub channel: Id<ChannelMarker>,
     #[serde(default)]
     pub expected_length: Option<u16>,
 }
@@ -52,11 +52,10 @@ impl AprilFoolsChannel for ExactMessageLength {
             == Some(67);
         let new_length = reroll_message_length(just_had_67);
         context
-            .channel_id
+            .context
             .send_message(
-                &context.context,
-                CreateMessage::new()
-                    .content(format!("Now expecting message length of {new_length}")),
+                context.channel_id,
+                format!("Now expecting message length of {new_length}"),
             )
             .await?;
         let mut storage = GuildStorage::get_mut(context.guild_id).await;

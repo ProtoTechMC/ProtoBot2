@@ -2,12 +2,13 @@ use crate::pterodactyl::{
     PterodactylAllPerms, PterodactylChatBridge, PterodactylEmails, PterodactylServer,
     PterodactylServerCategoryFilter,
 };
-use log::warn;
 use serde::Deserialize;
-use serenity::model::id::{ChannelId, GuildId, RoleId};
 use std::collections::HashSet;
 use std::fs::File;
 use std::sync::{Arc, OnceLock, RwLock};
+use tracing::warn;
+use twilight_model::id::marker::{ChannelMarker, GuildMarker, RoleMarker};
+use twilight_model::id::Id;
 
 fn writable_config() -> &'static RwLock<Arc<Config>> {
     static CONFIG: OnceLock<RwLock<Arc<Config>>> = OnceLock::new();
@@ -27,7 +28,7 @@ pub(crate) fn reload() -> crate::Result<()> {
 #[derive(Deserialize)]
 pub struct Config {
     pub discord_token: String,
-    pub guild_id: GuildId,
+    pub guild_id: Id<GuildMarker>,
     pub listen_ip: String,
     pub application_token: String,
     pub pterodactyl_domain: String,
@@ -92,7 +93,7 @@ impl Config {
 
     pub fn chat_bridge_by_discord_channel(
         &self,
-        discord_channel: ChannelId,
+        discord_channel: Id<ChannelMarker>,
     ) -> Option<&PterodactylChatBridge> {
         self.pterodactyl_chat_bridges.iter().find(|bridge| {
             bridge
@@ -105,14 +106,14 @@ impl Config {
 
 #[derive(Deserialize)]
 pub struct SpecialChannels {
-    pub applications: ChannelId,
-    pub support: ChannelId,
+    pub applications: Id<ChannelMarker>,
+    pub support: Id<ChannelMarker>,
 }
 
 #[derive(Deserialize)]
 pub struct SpecialRoles {
-    pub panel_access: RoleId,
-    pub member: RoleId,
-    pub trial_member: RoleId,
-    pub channel_access: RoleId,
+    pub panel_access: Id<RoleMarker>,
+    pub member: Id<RoleMarker>,
+    pub trial_member: Id<RoleMarker>,
+    pub channel_access: Id<RoleMarker>,
 }

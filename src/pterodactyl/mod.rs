@@ -1,7 +1,8 @@
 use pterodactyl_api::client::ServerState;
 use serde::{Deserialize, Serialize};
-use serenity::model::id::ChannelId;
 use std::collections::BTreeMap;
+use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::Id;
 
 pub mod perms_sync;
 pub mod smp_commands;
@@ -109,7 +110,7 @@ pub struct PterodactylChatBridge {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PterodactylChatBridgeDiscordChannel {
-    pub id: ChannelId,
+    pub id: Id<ChannelMarker>,
     pub webhook: String,
 }
 

@@ -1,17 +1,19 @@
+use crate::discord_bot::context::{self, Context};
 use crate::discord_bot::guild_storage::GuildStorage;
 use crate::discord_bot::{
     brainfuck, chess, counter, mood, permanent_latest, reaction_role_toggle, role, roletoggle,
     social_credit, storage, support, welcome_message,
 };
 use chrono::Datelike;
-use log::info;
 use serde::Deserialize;
-use serenity::builder::{CreateAttachment, CreateEmbed, CreateEmbedFooter, CreateMessage};
-use serenity::cache::Cache;
-use serenity::client::Context;
-use serenity::model::channel::{ChannelType, Message};
-use serenity::model::id::GuildId;
-use serenity::model::Permissions;
+use tracing::info;
+use twilight_model::channel::{ChannelType, Message};
+use twilight_model::http::attachment::Attachment;
+use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::Id;
+use twilight_util::builder::embed::{
+    EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder, ImageSource,
+};
 
 macro_rules! count {
     ($name:literal) => { 1 };
@@ -31,7 +33,7 @@ macro_rules! declare_commands {
             ),*
         ];
 
-        async fn do_run_command(command: &str, args: &str, guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+        async fn do_run_command(command: &str, args: &str, guild_id: Id<GuildMarker>, ctx: Context, message: &Message) -> crate::Result<()> {
             match command {
                 $(
                     $name => $func(args, guild_id, ctx, message).await,
@@ -81,7 +83,7 @@ declare_commands! {
 
 pub(crate) async fn run(
     command: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -102,43 +104,45 @@ pub(crate) async fn run(
 
 async fn handle_custom_command(
     command: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     let command = command.to_lowercase();
     let storage = GuildStorage::get(guild_id).await;
     if let Some(toggle_info) = storage.role_toggles.get(&command) {
-        let member = guild_id.member(&ctx, message.author.id).await?;
+        let member = ctx.member(guild_id, message.author.id).await?;
 
         if let Some(permission_role) = toggle_info.permission_role {
             if !member.roles.contains(&permission_role) {
-                message
-                    .reply(ctx, "You do not have permission to toggle this role")
+                ctx.reply(message, "You do not have permission to toggle this role")
                     .await?;
                 return Ok(());
             }
         }
 
         if member.roles.contains(&toggle_info.role) {
-            member.remove_role(&ctx, toggle_info.role).await?;
+            ctx.http
+                .remove_guild_member_role(guild_id, message.author.id, toggle_info.role)
+                .await?;
         } else {
-            member.add_role(&ctx, toggle_info.role).await?;
+            ctx.http
+                .add_guild_member_role(guild_id, message.author.id, toggle_info.role)
+                .await?;
         }
-        message.reply(ctx, "The role has been toggled").await?;
+        ctx.reply(message, "The role has been toggled").await?;
     } else if let Some(trick) = storage.tricks.get(&command) {
-        message.reply(ctx, trick).await?;
+        ctx.reply(message, trick).await?;
     }
 
     Ok(())
 }
 
-pub(super) fn is_admin(ctx: impl AsRef<Cache>, message: &Message) -> bool {
-    if let Some(permissions) = message.author_permissions(ctx) {
-        return permissions.contains(Permissions::ADMINISTRATOR);
-    }
-
-    false
+pub(super) fn is_admin(ctx: &Context, message: &Message) -> bool {
+    let (Some(guild_id), Some(member)) = (message.guild_id, &message.member) else {
+        return false;
+    };
+    ctx.is_admin(guild_id, message.author.id, &member.roles)
 }
 
 pub(super) async fn check_admin(ctx: &Context, message: &Message) -> crate::Result<bool> {
@@ -146,8 +150,7 @@ pub(super) async fn check_admin(ctx: &Context, message: &Message) -> crate::Resu
         return Ok(true);
     }
 
-    message
-        .reply(ctx, "Insufficient permissions to perform this command")
+    ctx.reply(message, "Insufficient permissions to perform this command")
         .await?;
 
     Ok(false)
@@ -155,7 +158,7 @@ pub(super) async fn check_admin(ctx: &Context, message: &Message) -> crate::Resu
 
 async fn prefix(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -164,38 +167,41 @@ async fn prefix(
     }
 
     if args.is_empty() {
-        message.reply(ctx, "Please specify a new prefix").await?;
+        ctx.reply(message, "Please specify a new prefix").await?;
         return Ok(());
     }
 
     let mut storage = GuildStorage::get_mut(guild_id).await;
     args.clone_into(&mut storage.command_prefix);
     storage.save().await;
-    message
-        .reply(ctx, format!("Command prefix changed to \"{}\"", args))
+    ctx.reply(message, format!("Command prefix changed to \"{}\"", args))
         .await?;
 
     Ok(())
 }
 
-async fn c2f(args: &str, _guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+async fn c2f(
+    args: &str,
+    _guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
     let celsius: f64 = match args.parse() {
         Ok(float) => float,
         Err(_) => {
-            message.reply(ctx, "Input a valid number").await?;
+            ctx.reply(message, "Input a valid number").await?;
             return Ok(());
         }
     };
     let fahrenheit = celsius * (9.0 / 5.0) + 32.0;
-    message
-        .reply(ctx, format!("{}°C = {:.3}°F", celsius, fahrenheit))
+    ctx.reply(message, format!("{}°C = {:.3}°F", celsius, fahrenheit))
         .await?;
     Ok(())
 }
 
 async fn cat(
     _args: &str,
-    _guild_id: GuildId,
+    _guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -203,30 +209,30 @@ async fn cat(
         .await?
         .bytes()
         .await?;
-    message
-        .channel_id
-        .send_message(
-            ctx,
-            CreateMessage::new()
-                .reference_message(message)
-                .add_file(CreateAttachment::bytes(image, "cat.png")),
-        )
+    ctx.http
+        .create_message(message.channel_id)
+        .reply(message.id)
+        .attachments(&[Attachment::from_bytes(
+            "cat.png".to_owned(),
+            image.to_vec(),
+            0,
+        )])
         .await?;
     Ok(())
 }
 
 async fn channels(
     _args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     let mut text_count = 0;
     let mut voice_count = 0;
-    for channel in guild_id.channels(&ctx).await?.values() {
+    for channel in ctx.guild_channels(guild_id).await? {
         match channel.kind {
-            ChannelType::Text => text_count += 1,
-            ChannelType::Voice => voice_count += 1,
+            ChannelType::GuildText => text_count += 1,
+            ChannelType::GuildVoice => voice_count += 1,
             _ => {}
         }
     }
@@ -241,8 +247,8 @@ async fn channels(
     let channel_creation_rate = 1.0 / (rand::random::<f64>() * 5.0 + 7.5);
     let expected = (text_count + voice_count)
         + (days_until_next_year as f64 * channel_creation_rate).round() as u32;
-    let guild_name = guild_id
-        .name(&ctx)
+    let guild_name = ctx
+        .guild_name(guild_id)
         .unwrap_or_else(|| "<unknown>".to_owned());
     let witty_message = format!(
         "There are {} channels on {} so far! ({} text channels and {} voice channels)\nI am expecting {} by the end of the year.",
@@ -252,14 +258,14 @@ async fn channels(
         voice_count,
         expected,
     );
-    message.reply(ctx, witty_message).await?;
+    ctx.reply(message, witty_message).await?;
 
     Ok(())
 }
 
 async fn dog(
     _args: &str,
-    _guild_id: GuildId,
+    _guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -275,95 +281,97 @@ async fn dog(
         .json()
         .await?;
     let image = client.get(json.url).send().await?.bytes().await?;
-    message
-        .channel_id
-        .send_message(
-            ctx,
-            CreateMessage::new()
-                .reference_message(message)
-                .add_file(CreateAttachment::bytes(image, "dog.png")),
-        )
+    ctx.http
+        .create_message(message.channel_id)
+        .reply(message.id)
+        .attachments(&[Attachment::from_bytes(
+            "dog.png".to_owned(),
+            image.to_vec(),
+            0,
+        )])
         .await?;
     Ok(())
 }
 
 async fn echo(
     args: &str,
-    _guild_id: GuildId,
+    _guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     if args.is_empty() {
-        message.reply(ctx, "Enter something for me to say").await?;
+        ctx.reply(message, "Enter something for me to say").await?;
         return Ok(());
     }
 
-    message.reply(ctx, args).await?;
+    ctx.reply(message, args).await?;
 
     Ok(())
 }
 
-async fn f2c(args: &str, _guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+async fn f2c(
+    args: &str,
+    _guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
     let fahrenheit: f64 = match args.parse() {
         Ok(float) => float,
         Err(_) => {
-            message.reply(ctx, "Input a valid number").await?;
+            ctx.reply(message, "Input a valid number").await?;
             return Ok(());
         }
     };
     let celsius = (fahrenheit - 32.0) * (5.0 / 9.0);
-    message
-        .reply(ctx, format!("{}°F = {:.3}°C", fahrenheit, celsius))
+    ctx.reply(message, format!("{}°F = {:.3}°C", fahrenheit, celsius))
         .await?;
     Ok(())
 }
 
 async fn google(
     args: &str,
-    _guild_id: GuildId,
+    _guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     if args.is_empty() {
-        message.reply(ctx, "Please enter a search query").await?;
+        ctx.reply(message, "Please enter a search query").await?;
         return Ok(());
     }
 
     let url_encoded = urlencoding::encode(args).replace("%20", "+");
 
-    message
-        .channel_id
-        .send_message(
-            &ctx,
-            CreateMessage::new()
-                .reference_message(message)
-                .content(format!("<https://google.com/search?q={}>", url_encoded))
-                .embed(
-                    CreateEmbed::new()
-                        .title("Google Search for Lazy People")
-                        .field("Googling this:", args, false)
-                        .footer({
-                            let mut footer = CreateEmbedFooter::new(&message.author.name);
-                            if let Some(avatar) = &message.author.avatar_url() {
-                                footer = footer.icon_url(avatar);
-                            }
-                            footer
-                        }),
-                ),
-        )
+    let mut footer = EmbedFooterBuilder::new(&message.author.name);
+    if let Some(avatar) = context::avatar_url(&message.author) {
+        footer = footer.icon_url(ImageSource::url(avatar)?);
+    }
+    ctx.http
+        .create_message(message.channel_id)
+        .reply(message.id)
+        .content(&format!("<https://google.com/search?q={}>", url_encoded))
+        .embeds(&[EmbedBuilder::new()
+            .title("Google Search for Lazy People")
+            .field(EmbedFieldBuilder::new("Googling this:", args))
+            .footer(footer)
+            .build()])
         .await?;
 
     Ok(())
 }
 
-async fn len(args: &str, _guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
-    message.reply(ctx, args.chars().count().to_string()).await?;
+async fn len(
+    args: &str,
+    _guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
+    ctx.reply(message, args.chars().count().to_string()).await?;
     Ok(())
 }
 
 async fn trick(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -376,12 +384,11 @@ async fn trick(
         "add" => {
             if args.len() < 3 {
                 let storage = GuildStorage::get(guild_id).await;
-                message
-                    .reply(
-                        ctx,
-                        format!("`{}trick add <name> <message>`", storage.command_prefix),
-                    )
-                    .await?;
+                ctx.reply(
+                    message,
+                    format!("`{}trick add <name> <message>`", storage.command_prefix),
+                )
+                .await?;
                 return Ok(());
             }
 
@@ -393,8 +400,7 @@ async fn trick(
                 || storage.tricks.contains_key(&name)
             {
                 storage.discard();
-                message
-                    .reply(ctx, "A command with that name already exists")
+                ctx.reply(message, "A command with that name already exists")
                     .await?;
                 return Ok(());
             }
@@ -403,17 +409,16 @@ async fn trick(
 
             storage.tricks.insert(name, value);
             storage.save().await;
-            message.reply(ctx, "Successfully added trick").await?;
+            ctx.reply(message, "Successfully added trick").await?;
         }
         "remove" => {
             if args.len() != 2 {
                 let storage = GuildStorage::get(guild_id).await;
-                message
-                    .reply(
-                        ctx,
-                        format!("`{}trick remove <name>`", storage.command_prefix),
-                    )
-                    .await?;
+                ctx.reply(
+                    message,
+                    format!("`{}trick remove <name>`", storage.command_prefix),
+                )
+                .await?;
                 return Ok(());
             }
 
@@ -422,22 +427,21 @@ async fn trick(
             match storage.tricks.remove(&name) {
                 Some(_) => {
                     storage.save().await;
-                    message.reply(ctx, "Successfully removed trick").await?;
+                    ctx.reply(message, "Successfully removed trick").await?;
                 }
                 None => {
                     storage.discard();
-                    message.reply(ctx, "No such trick").await?;
+                    ctx.reply(message, "No such trick").await?;
                 }
             }
         }
         _ => {
             let storage = GuildStorage::get(guild_id).await;
-            message
-                .reply(
-                    ctx,
-                    format!("`{}trick <add|remove> ...`", storage.command_prefix),
-                )
-                .await?;
+            ctx.reply(
+                message,
+                format!("`{}trick <add|remove> ...`", storage.command_prefix),
+            )
+            .await?;
             return Ok(());
         }
     }
@@ -447,7 +451,7 @@ async fn trick(
 
 async fn help(
     _args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -463,7 +467,7 @@ async fn help(
     role_toggles.sort();
     tricks.sort();
 
-    let mut embed_builder = CreateEmbed::new().title("ProtoBot command help");
+    let mut embed_builder = EmbedBuilder::new().title("ProtoBot command help");
 
     let mut built_in_commands = String::new();
     let mut built_in_commands_len = 0;
@@ -479,8 +483,10 @@ async fn help(
                 format!("Built-in commands ({}):", built_in_commands_embed_count + 1)
             };
             built_in_commands_embed_count += 1;
-            embed_builder =
-                embed_builder.field(embed_name, std::mem::take(&mut built_in_commands), false);
+            embed_builder = embed_builder.field(EmbedFieldBuilder::new(
+                embed_name,
+                std::mem::take(&mut built_in_commands),
+            ));
             built_in_commands_len = 0;
         }
 
@@ -500,43 +506,38 @@ async fn help(
         } else {
             format!("Built-in commands ({}):", built_in_commands_embed_count + 1)
         };
-        embed_builder = embed_builder.field(embed_name, built_in_commands, false);
+        embed_builder = embed_builder.field(EmbedFieldBuilder::new(embed_name, built_in_commands));
     }
 
-    message
-        .channel_id
-        .send_message(
-            ctx,
-            CreateMessage::new().reference_message(message).embed(
-                embed_builder
-                    .field(
-                        "Role toggles:",
-                        if role_toggles.is_empty() {
-                            "*None*".to_owned()
-                        } else {
-                            role_toggles
-                                .iter()
-                                .map(|key| format!("• **{key}**"))
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        },
-                        false,
-                    )
-                    .field(
-                        "Tricks:",
-                        if tricks.is_empty() {
-                            "*None*".to_owned()
-                        } else {
-                            tricks
-                                .iter()
-                                .map(|key| format!("• **{key}**"))
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        },
-                        false,
-                    ),
-            ),
-        )
+    ctx.http
+        .create_message(message.channel_id)
+        .reply(message.id)
+        .embeds(&[embed_builder
+            .field(EmbedFieldBuilder::new(
+                "Role toggles:",
+                if role_toggles.is_empty() {
+                    "*None*".to_owned()
+                } else {
+                    role_toggles
+                        .iter()
+                        .map(|key| format!("• **{key}**"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                },
+            ))
+            .field(EmbedFieldBuilder::new(
+                "Tricks:",
+                if tricks.is_empty() {
+                    "*None*".to_owned()
+                } else {
+                    tricks
+                        .iter()
+                        .map(|key| format!("• **{key}**"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                },
+            ))
+            .build()])
         .await?;
 
     Ok(())

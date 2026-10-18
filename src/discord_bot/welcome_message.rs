@@ -1,21 +1,26 @@
 use crate::discord_bot::commands::check_admin;
+use crate::discord_bot::context::Context;
 use crate::discord_bot::guild_storage::GuildStorage;
 use serde::{Deserialize, Serialize};
-use serenity::client::Context;
-use serenity::model::channel::Message;
-use serenity::model::id::{ChannelId, GuildId};
+use twilight_model::channel::Message;
+use twilight_model::id::marker::{ChannelMarker, GuildMarker};
+use twilight_model::id::Id;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct WelcomeMessageData {
-    pub channel: ChannelId,
+    pub channel: Id<ChannelMarker>,
     pub message: String,
 }
 
-async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+async fn print_usage(
+    guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
     let prefix = GuildStorage::get(guild_id).await.command_prefix.clone();
-    message
+    ctx
         .reply(
-            ctx,
+            message,
             format!(
                 "{prefix}welcome_message <channel_id> [message]\nUse [user] as a placeholder for a ping to the user."
             ),
@@ -26,7 +31,7 @@ async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crat
 
 pub(crate) async fn run(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -39,13 +44,17 @@ pub(crate) async fn run(
         + args[first_arg_end..]
             .find(|c: char| !c.is_whitespace())
             .unwrap_or_default();
-    let Ok(channel_id) = args[..first_arg_end].parse::<ChannelId>() else {
+    let Ok(channel_id) = args[..first_arg_end].parse::<Id<ChannelMarker>>() else {
         return print_usage(guild_id, ctx, message).await;
     };
 
-    if !guild_id.channels(&ctx).await?.contains_key(&channel_id) {
-        message
-            .reply(ctx, "That channel is not in this discord")
+    if !ctx
+        .guild_channels(guild_id)
+        .await?
+        .iter()
+        .any(|channel| channel.id == channel_id)
+    {
+        ctx.reply(message, "That channel is not in this discord")
             .await?;
         return Ok(());
     }
@@ -55,8 +64,7 @@ pub(crate) async fn run(
     if welcome_message.is_empty() {
         storage.welcome_message = None;
         storage.save().await;
-        message
-            .reply(&ctx, "Successfully removed the welcome message")
+        ctx.reply(message, "Successfully removed the welcome message")
             .await?;
     } else {
         storage.welcome_message = Some(WelcomeMessageData {
@@ -64,12 +72,11 @@ pub(crate) async fn run(
             message: welcome_message.to_owned(),
         });
         storage.save().await;
-        message
-            .reply(
-                &ctx,
-                format!("Set the welcome message to {welcome_message}"),
-            )
-            .await?;
+        ctx.reply(
+            message,
+            format!("Set the welcome message to {welcome_message}"),
+        )
+        .await?;
     }
 
     Ok(())

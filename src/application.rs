@@ -1,11 +1,13 @@
 use crate::{config, ProtobotData};
 use linkify::{LinkFinder, LinkKind};
-use log::warn;
 use scraper::Html;
 use serde::Deserialize;
-use serenity::builder::{CreateEmbed, CreateEmbedAuthor, CreateMessage};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
+use tracing::warn;
+use twilight_util::builder::embed::{
+    EmbedAuthorBuilder, EmbedBuilder, EmbedFieldBuilder, ImageSource,
+};
 
 pub(crate) async fn handle_application(
     application_json: &str,
@@ -17,59 +19,44 @@ pub(crate) async fn handle_application(
 
     for embed in embeds.embeds {
         let url = embeds.url.clone();
-        config::get()
-            .special_channels
-            .applications
-            .send_message(
-                &data.discord_handle,
-                CreateMessage::new().embed({
-                    let mut discord_embed = CreateEmbed::new()
-                        .author(CreateEmbedAuthor::new(embed.author))
-                        .title(embed.title)
-                        .description(embed.description)
-                        .fields(
-                            embed
-                                .fields
-                                .into_iter()
-                                .map(|field| (field.title, field.value, false)),
-                        );
-                    if url.len() <= EMBED_URL_LIMIT {
-                        discord_embed = discord_embed.url(url);
-                    }
-                    discord_embed
-                }),
-            )
+        let mut discord_embed = EmbedBuilder::new()
+            .author(EmbedAuthorBuilder::new(embed.author))
+            .title(embed.title)
+            .description(embed.description);
+        for field in embed.fields {
+            discord_embed = discord_embed.field(EmbedFieldBuilder::new(field.title, field.value));
+        }
+        if url.len() <= EMBED_URL_LIMIT {
+            discord_embed = discord_embed.url(url);
+        }
+        data.discord_handle
+            .create_message(config::get().special_channels.applications)
+            .embeds(&[discord_embed.build()])
             .await?;
     }
 
     for attachment in attachments {
-        config::get()
-            .special_channels
-            .applications
-            .send_message(
-                &data.discord_handle,
-                CreateMessage::new().embed({
-                    let mut discord_embed = CreateEmbed::new();
-                    match attachment.typ {
-                        AttachmentType::Image => {
-                            discord_embed = discord_embed.image(attachment.url);
-                        }
-                        AttachmentType::Video => {
-                            // discord can't attach videos: https://github.com/serenity-rs/serenity/issues/2354
-                        }
-                    }
-                    if let Some(link) = attachment.link {
-                        discord_embed = discord_embed.url(link);
-                    }
-                    if let Some(title) = attachment.title {
-                        discord_embed = discord_embed.title(title);
-                    }
-                    if let Some(description) = attachment.description {
-                        discord_embed = discord_embed.description(description);
-                    }
-                    discord_embed
-                }),
-            )
+        let mut discord_embed = EmbedBuilder::new();
+        match attachment.typ {
+            AttachmentType::Image => {
+                discord_embed = discord_embed.image(ImageSource::url(attachment.url)?);
+            }
+            AttachmentType::Video => {
+                // discord can't attach videos: https://github.com/serenity-rs/serenity/issues/2354
+            }
+        }
+        if let Some(link) = attachment.link {
+            discord_embed = discord_embed.url(link);
+        }
+        if let Some(title) = attachment.title {
+            discord_embed = discord_embed.title(title);
+        }
+        if let Some(description) = attachment.description {
+            discord_embed = discord_embed.description(description);
+        }
+        data.discord_handle
+            .create_message(config::get().special_channels.applications)
+            .embeds(&[discord_embed.build()])
             .await?;
     }
 

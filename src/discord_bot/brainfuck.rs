@@ -1,8 +1,9 @@
+use crate::discord_bot::context::Context;
 use crate::discord_bot::guild_storage::GuildStorage;
-use serenity::client::Context;
-use serenity::model::channel::Message;
-use serenity::model::id::GuildId;
 use std::time::{Duration, Instant};
+use twilight_model::channel::Message;
+use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::Id;
 
 const MEM_LIMIT: usize = 65536;
 const TIME_LIMIT: Duration = Duration::from_secs(5);
@@ -15,20 +16,19 @@ enum BrainfuckError {
 
 pub(crate) async fn run(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     if args.is_empty() {
-        message
-            .reply(
-                ctx,
-                format!(
-                    "{}brainfuck <code> [ \"|\" <input> ]",
-                    GuildStorage::get(guild_id).await.command_prefix
-                ),
-            )
-            .await?;
+        ctx.reply(
+            message,
+            format!(
+                "{}brainfuck <code> [ \"|\" <input> ]",
+                GuildStorage::get(guild_id).await.command_prefix
+            ),
+        )
+        .await?;
         return Ok(());
     }
 
@@ -62,20 +62,18 @@ pub(crate) async fn run(
     match output {
         Ok(output) => {
             if output.is_empty() {
-                message
-                    .reply(ctx, "Program terminated with no output")
+                ctx.reply(message, "Program terminated with no output")
                     .await?;
             } else {
-                message
-                    .reply(
-                        &ctx,
-                        output
-                            .iter()
-                            .map(|out| out.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    )
-                    .await?;
+                ctx.reply(
+                    message,
+                    output
+                        .iter()
+                        .map(|out| out.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+                .await?;
                 let output = output
                     .into_iter()
                     .map(|out| {
@@ -89,18 +87,18 @@ pub(crate) async fn run(
                     .collect::<Vec<_>>()
                     .join("");
                 if !output.chars().all(|char| char.is_whitespace()) {
-                    message.reply(ctx, output.trim()).await?;
+                    ctx.reply(message, output.trim()).await?;
                 }
             }
         }
         Err(BrainfuckError::UnbalancedBrackets) => {
-            message.reply(ctx, "Unbalanced [] square brackets").await?;
+            ctx.reply(message, "Unbalanced [] square brackets").await?;
         }
         Err(BrainfuckError::OutOfMemory) => {
-            message.reply(ctx, "Out of memory").await?;
+            ctx.reply(message, "Out of memory").await?;
         }
         Err(BrainfuckError::TimeOut) => {
-            message.reply(ctx, "Timed out").await?;
+            ctx.reply(message, "Timed out").await?;
         }
     }
 

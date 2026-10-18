@@ -1,14 +1,17 @@
 use crate::discord_bot::commands::check_admin;
+use crate::discord_bot::context::Context;
 use crate::discord_bot::guild_storage::GuildStorage;
-use log::error;
-use serenity::all::CreateMessage;
-use serenity::client::Context;
-use serenity::model::channel::{Message, Reaction, ReactionType};
-use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId};
+use tracing::error;
+use twilight_http::request::AuditLogReason;
+use twilight_model::channel::message::EmojiReactionType;
+use twilight_model::channel::Message;
+use twilight_model::gateway::GatewayReaction;
+use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::Id;
 
 pub(crate) async fn run(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -32,7 +35,7 @@ pub(crate) async fn run(
     let role_id = match args[1].parse() {
         Ok(id) => id,
         Err(_) => {
-            message.reply(ctx, "Invalid role id").await?;
+            ctx.reply(message, "Invalid role id").await?;
             return Ok(());
         }
     };
@@ -40,7 +43,7 @@ pub(crate) async fn run(
     let channel_id = match args[2].parse() {
         Ok(id) => id,
         Err(_) => {
-            message.reply(ctx, "Invalid channel id").await?;
+            ctx.reply(message, "Invalid channel id").await?;
             return Ok(());
         }
     };
@@ -48,43 +51,32 @@ pub(crate) async fn run(
     let message_id = match args[3].parse() {
         Ok(id) => id,
         Err(_) => {
-            message.reply(ctx, "Invalid message id").await?;
+            ctx.reply(message, "Invalid message id").await?;
             return Ok(());
         }
     };
 
-    let role_id = RoleId::new(role_id);
-    let channel_id = ChannelId::new(channel_id);
-    let message_id = MessageId::new(message_id);
-
     let emoji = match parse_emoji(args[4]) {
         Some(emoji) => emoji,
         None => {
-            message.reply(ctx, "Invalid emoji").await?;
+            ctx.reply(message, "Invalid emoji").await?;
             return Ok(());
         }
     };
 
     if !remove {
-        if guild_id.role(&ctx, role_id).await.is_err() {
-            message
-                .reply(ctx, "Could not find that role in this server")
+        if ctx.role(guild_id, role_id).await.is_err() {
+            ctx.reply(message, "Could not find that role in this server")
                 .await?;
             return Ok(());
         }
 
-        if channel_id.message(&ctx, message_id).await.is_err() {
-            message.reply(ctx, "Could not find that message").await?;
+        if ctx.http.message(channel_id, message_id).await.is_err() {
+            ctx.reply(message, "Could not find that message").await?;
             return Ok(());
         }
-        if channel_id
-            .to_channel(&ctx)
-            .await?
-            .guild()
-            .map(|chan| chan.guild_id)
-            != Some(guild_id)
-        {
-            message.reply(ctx, "Could not find that message").await?;
+        if ctx.channel(channel_id).await?.guild_id != Some(guild_id) {
+            ctx.reply(message, "Could not find that message").await?;
             return Ok(());
         }
     }
@@ -97,35 +89,32 @@ pub(crate) async fn run(
             let prev_len = roles.len();
             *roles = roles
                 .drain(..)
-                .filter(|(e, r)| e != &emoji || r != &role_id)
+                .filter(|(e, r)| !emoji_matches(e, &emoji) || r != &role_id)
                 .collect();
             removed = roles.len() != prev_len;
         }
         if removed {
-            message
-                .reply(ctx, "Removed that reaction role toggle")
+            ctx.reply(message, "Removed that reaction role toggle")
                 .await?;
         } else {
-            message
-                .reply(ctx, "That reaction role toggle doesn't exist to remove")
+            ctx.reply(message, "That reaction role toggle doesn't exist to remove")
                 .await?;
             storage.discard();
             return Ok(());
         }
     } else {
         let roles = storage.reaction_roles.entry(message_id).or_default();
-        if roles.iter().any(|(e, _)| e == &emoji) {
-            message
-                .reply(
-                    ctx,
-                    "That emoji is already associated with a role on that message",
-                )
-                .await?;
+        if roles.iter().any(|(e, _)| emoji_matches(e, &emoji)) {
+            ctx.reply(
+                message,
+                "That emoji is already associated with a role on that message",
+            )
+            .await?;
             storage.discard();
             return Ok(());
         } else {
             roles.push((emoji, role_id));
-            message.reply(ctx, "Set up reaction role toggle").await?;
+            ctx.reply(message, "Set up reaction role toggle").await?;
         }
     }
 
@@ -134,35 +123,73 @@ pub(crate) async fn run(
     Ok(())
 }
 
-async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
-    message
-        .reply(
-            ctx,
-            format!(
-                "{}reaction_roletoggle <add|remove> <role_id> <channel_id> <message_id> <emoji>",
-                GuildStorage::get(guild_id).await.command_prefix
-            ),
-        )
-        .await?;
+async fn print_usage(
+    guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
+    ctx.reply(
+        message,
+        format!(
+            "{}reaction_roletoggle <add|remove> <role_id> <channel_id> <message_id> <emoji>",
+            GuildStorage::get(guild_id).await.command_prefix
+        ),
+    )
+    .await?;
     Ok(())
 }
 
-fn parse_emoji(emoji: &str) -> Option<ReactionType> {
-    let result = match ReactionType::try_from(emoji) {
-        Ok(result) => result,
-        Err(_) => return None,
-    };
-    if matches!(result, ReactionType::Unicode(..)) && emoji.chars().count() != 1 {
+fn parse_emoji(emoji: &str) -> Option<EmojiReactionType> {
+    if emoji.is_empty() {
         return None;
     }
 
-    Some(result)
+    let Some(custom_emoji) = emoji
+        .strip_prefix('<')
+        .and_then(|emoji| emoji.strip_suffix('>'))
+    else {
+        if emoji.chars().count() != 1 {
+            return None;
+        }
+        return Some(EmojiReactionType::Unicode {
+            name: emoji.to_owned(),
+        });
+    };
+
+    // custom emojis are formatted as <:name:id> or <a:name:id>
+    let mut parts = custom_emoji.split(':');
+    let animated = match parts.next()? {
+        "" => false,
+        "a" => true,
+        _ => return None,
+    };
+    let name = parts.next()?;
+    let id = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+
+    Some(EmojiReactionType::Custom {
+        animated,
+        id,
+        name: Some(name.to_owned()),
+    })
 }
 
-pub(crate) async fn on_reaction_change(ctx: Context, reaction: Reaction, remove: bool) {
-    if let Reaction {
+fn emoji_matches(a: &EmojiReactionType, b: &EmojiReactionType) -> bool {
+    match (a, b) {
+        (EmojiReactionType::Custom { id: a, .. }, EmojiReactionType::Custom { id: b, .. }) => {
+            a == b
+        }
+        (EmojiReactionType::Unicode { name: a }, EmojiReactionType::Unicode { name: b }) => a == b,
+        _ => false,
+    }
+}
+
+pub(crate) async fn on_reaction_change(ctx: Context, reaction: GatewayReaction, remove: bool) {
+    if let GatewayReaction {
         guild_id: Some(guild),
-        user_id: Some(user),
+        user_id: user,
         message_id,
         emoji,
         ..
@@ -170,18 +197,23 @@ pub(crate) async fn on_reaction_change(ctx: Context, reaction: Reaction, remove:
     {
         let storage = GuildStorage::get(guild).await;
         if let Some(roles) = storage.reaction_roles.get(&message_id) {
-            if let Some((_, role)) = roles.iter().find(|(reaction, _)| &emoji == reaction) {
-                let Ok(role) = guild.role(&ctx, *role).await else {
+            if let Some((_, role)) = roles
+                .iter()
+                .find(|(reaction, _)| emoji_matches(&emoji, reaction))
+            {
+                let Ok(role) = ctx.role(guild, *role).await else {
                     error!("Could not find role {} in guild {}", *role, guild);
                     return;
                 };
                 if let Err(err) = if remove {
                     ctx.http
-                        .remove_member_role(guild, user, role.id, Some("Removed reaction"))
+                        .remove_guild_member_role(guild, user, role.id)
+                        .reason("Removed reaction")
                         .await
                 } else {
                     ctx.http
-                        .add_member_role(guild, user, role.id, Some("Added reaction"))
+                        .add_guild_member_role(guild, user, role.id)
+                        .reason("Added reaction")
                         .await
                 } {
                     error!(
@@ -190,26 +222,24 @@ pub(crate) async fn on_reaction_change(ctx: Context, reaction: Reaction, remove:
                         role.name,
                         if remove { "from" } else { "to" },
                         user,
-                        guild.name(ctx).as_deref().unwrap_or("<unknown>"),
+                        ctx.guild_name(guild).as_deref().unwrap_or("<unknown>"),
                         err
                     );
                     return;
                 }
 
-                if let Ok(channel) = user.create_dm_channel(&ctx).await {
-                    let guild_name = guild.name(&ctx);
-                    let _ = channel
-                        .send_message(
-                            ctx,
-                            CreateMessage::new().content(format!(
-                                "{} role {} in server {}",
-                                if remove { "Taken your" } else { "Given you" },
-                                role.name,
-                                guild_name.as_deref().unwrap_or("<unknown>")
-                            )),
-                        )
-                        .await;
-                }
+                let guild_name = ctx.guild_name(guild);
+                let _ = ctx
+                    .send_dm(
+                        user,
+                        &format!(
+                            "{} role {} in server {}",
+                            if remove { "Taken your" } else { "Given you" },
+                            role.name,
+                            guild_name.as_deref().unwrap_or("<unknown>")
+                        ),
+                    )
+                    .await;
             }
         }
     }

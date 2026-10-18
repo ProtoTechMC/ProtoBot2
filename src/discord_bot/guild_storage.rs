@@ -7,16 +7,19 @@ use crate::discord_bot::welcome_message::WelcomeMessageData;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
-use log::warn;
 use serde::{Deserialize, Serialize};
-use serenity::model::channel::ReactionType;
-use serenity::model::id::{ChannelId, GuildId, MessageId, RoleId, UserId};
 use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut};
 use std::sync::OnceLock;
+use tracing::warn;
+use twilight_model::channel::message::EmojiReactionType;
+use twilight_model::id::marker::{
+    ChannelMarker, GuildMarker, MessageMarker, RoleMarker, UserMarker,
+};
+use twilight_model::id::Id;
 
-fn guild_storage() -> &'static DashMap<GuildId, GuildStorage> {
-    static GUILD_STORAGE: OnceLock<DashMap<GuildId, GuildStorage>> = OnceLock::new();
+fn guild_storage() -> &'static DashMap<Id<GuildMarker>, GuildStorage> {
+    static GUILD_STORAGE: OnceLock<DashMap<Id<GuildMarker>, GuildStorage>> = OnceLock::new();
     GUILD_STORAGE.get_or_init(DashMap::new)
 }
 
@@ -30,9 +33,9 @@ pub struct GuildStorage {
     #[serde(default)]
     pub role_data: RoleData,
     #[serde(default)]
-    pub log_channel: Option<ChannelId>,
+    pub log_channel: Option<Id<ChannelMarker>>,
     #[serde(default)]
-    pub join_log_channel: Option<ChannelId>,
+    pub join_log_channel: Option<Id<ChannelMarker>>,
     #[serde(default)]
     pub welcome_message: Option<WelcomeMessageData>,
     #[serde(default)]
@@ -42,15 +45,15 @@ pub struct GuildStorage {
     #[serde(default)]
     pub permanent_latest: PermanentLatestInfo,
     #[serde(default)]
-    pub reaction_roles: HashMap<MessageId, Vec<(ReactionType, RoleId)>>,
+    pub reaction_roles: HashMap<Id<MessageMarker>, Vec<(EmojiReactionType, Id<RoleMarker>)>>,
     #[serde(default)]
-    pub send_to_support_leaderboard: HashMap<UserId, u32>,
+    pub send_to_support_leaderboard: HashMap<Id<UserMarker>, u32>,
     #[serde(default)]
-    pub users_sent_to_support: HashSet<UserId>,
+    pub users_sent_to_support: HashSet<Id<UserMarker>>,
     #[serde(default)]
     pub counters: HashMap<String, u64>,
     #[serde(default)]
-    pub social_credit: HashMap<UserId, i32>,
+    pub social_credit: HashMap<Id<UserMarker>, i32>,
     #[serde(default)]
     pub april_fools_channels: AprilFoolsChannels,
 }
@@ -82,7 +85,7 @@ fn default_command_prefix() -> String {
 }
 
 impl GuildStorage {
-    pub async fn get(guild_id: GuildId) -> Ref<'static, GuildId, GuildStorage> {
+    pub async fn get(guild_id: Id<GuildMarker>) -> Ref<'static, Id<GuildMarker>, GuildStorage> {
         if let Some(entry) = guild_storage().get(&guild_id) {
             return entry;
         }
@@ -92,7 +95,7 @@ impl GuildStorage {
         }
     }
 
-    pub async fn get_mut(guild_id: GuildId) -> StorageRef {
+    pub async fn get_mut(guild_id: Id<GuildMarker>) -> StorageRef {
         if let Some(entry) = guild_storage().get_mut(&guild_id) {
             return StorageRef::new(entry);
         }
@@ -102,7 +105,7 @@ impl GuildStorage {
         }
     }
 
-    async fn load(guild_id: GuildId) -> GuildStorage {
+    async fn load(guild_id: Id<GuildMarker>) -> GuildStorage {
         if let Ok(str) = tokio::fs::read_to_string(format!("storage/{}.json", guild_id)).await {
             match serde_json::from_str(&str) {
                 Ok(result) => return result,
@@ -112,7 +115,7 @@ impl GuildStorage {
         GuildStorage::default()
     }
 
-    async fn save(&self, guild_id: GuildId) {
+    async fn save(&self, guild_id: Id<GuildMarker>) {
         match serde_json::to_string(self) {
             Ok(str) => {
                 if let Err(err) = tokio::fs::create_dir_all("storage").await {
@@ -137,12 +140,12 @@ impl GuildStorage {
 #[derive(Debug)]
 #[must_use]
 pub struct StorageRef {
-    inner: RefMut<'static, GuildId, GuildStorage>,
+    inner: RefMut<'static, Id<GuildMarker>, GuildStorage>,
     needs_saving: bool,
 }
 
 impl StorageRef {
-    fn new(inner: RefMut<'static, GuildId, GuildStorage>) -> Self {
+    fn new(inner: RefMut<'static, Id<GuildMarker>, GuildStorage>) -> Self {
         Self {
             inner,
             needs_saving: true,

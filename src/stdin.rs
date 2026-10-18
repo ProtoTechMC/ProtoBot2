@@ -1,9 +1,9 @@
 use crate::config;
 use crate::pterodactyl::{perms_sync, whitelist};
 use crate::ProtobotData;
-use log::{error, info};
 use std::io;
 use std::io::BufRead;
+use tracing::{error, info};
 
 pub(crate) fn handle_stdin_loop(runtime: &tokio::runtime::Runtime, data: ProtobotData) {
     let lines = io::BufReader::new(io::stdin()).lines();

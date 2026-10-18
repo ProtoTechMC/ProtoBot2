@@ -1,15 +1,15 @@
 use crate::config;
+use crate::discord_bot::context::Context;
+use crate::discord_bot::edit_interaction_response;
 use crate::pterodactyl::{smp_commands, PterodactylServerCategory};
-use log::warn;
 use pterodactyl_api::client::backups::Backup;
 use pterodactyl_api::client::websocket::{PteroWebSocketHandle, PteroWebSocketListener};
 use pterodactyl_api::client::{PowerSignal, ServerState};
-use serenity::builder::EditInteractionResponse;
-use serenity::client::Context;
-use serenity::model::application::CommandInteraction;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tracing::warn;
+use twilight_model::application::interaction::Interaction;
 
 fn copy_update_mutex() -> &'static Mutex<()> {
     static COPY_UPDATE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -18,18 +18,13 @@ fn copy_update_mutex() -> &'static Mutex<()> {
 
 pub(crate) async fn run(
     ctx: &Context,
-    command: &CommandInteraction,
+    interaction: &Interaction,
     pterodactyl: &pterodactyl_api::client::Client,
 ) -> crate::Result<()> {
     let _guard = match copy_update_mutex().try_lock() {
         Ok(guard) => guard,
         Err(_) => {
-            command
-                .edit_response(
-                    &ctx.http,
-                    EditInteractionResponse::new()
-                        .content("Copy is already currently being updated"),
-                )
+            edit_interaction_response(ctx, interaction, "Copy is already currently being updated")
                 .await?;
             return Ok(());
         }
@@ -54,47 +49,33 @@ pub(crate) async fn run(
     };
     let copy_server = pterodactyl.get_server(&copy_server.id);
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Updating copy...\nStopping SMP"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Updating copy...\nStopping SMP").await?;
     stop_and_wait(&smp_server).await?;
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Updating copy...\nStopping copy"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Updating copy...\nStopping copy").await?;
     stop_and_wait(&copy_server).await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new()
-                .content("Updating copy...\nCreating SMP backup to copy from"),
-        )
-        .await?;
+    edit_interaction_response(
+        ctx,
+        interaction,
+        "Updating copy...\nCreating SMP backup to copy from",
+    )
+    .await?;
     let backup = create_backup_and_wait(&smp_server).await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new()
-                .content("Updating copy...\nCreating pre-overwrite copy backup"),
-        )
-        .await?;
+    edit_interaction_response(
+        ctx,
+        interaction,
+        "Updating copy...\nCreating pre-overwrite copy backup",
+    )
+    .await?;
     create_backup_and_wait(&copy_server).await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content(
-                "Updating copy...\nCopying backup from SMP to copy. This may take a while",
-            ),
-        )
-        .await?;
+    edit_interaction_response(
+        ctx,
+        interaction,
+        "Updating copy...\nCopying backup from SMP to copy. This may take a while",
+    )
+    .await?;
 
     copy_server.delete_file("copytemp").await?;
     copy_server.create_folder("copytemp").await?;
@@ -107,51 +88,26 @@ pub(crate) async fn run(
         )
         .await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Updating copy...\nExtracting backup"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Updating copy...\nExtracting backup").await?;
     copy_server.create_folder("copytemp/backup").await?;
     copy_server
         .decompress_file("copytemp/backup.tar.gz", "copytemp/backup")
         .await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Updating copy...\nCopying world"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Updating copy...\nCopying world").await?;
     copy_server.delete_file("world").await?;
     copy_server
         .rename_file("copytemp/backup/world", "world")
         .await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Updating copy...\nCleaning up"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Updating copy...\nCleaning up").await?;
     copy_server.delete_file("copytemp").await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Updating copy...\nStarting servers"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Updating copy...\nStarting servers").await?;
     smp_server.send_power_signal(PowerSignal::Start).await?;
     copy_server.send_power_signal(PowerSignal::Start).await?;
 
-    command
-        .edit_response(
-            &ctx.http,
-            EditInteractionResponse::new().content("Copy has been updated"),
-        )
-        .await?;
+    edit_interaction_response(ctx, interaction, "Copy has been updated").await?;
 
     Ok(())
 }

@@ -1,6 +1,7 @@
-use serenity::client::Context;
-use serenity::model::channel::Message;
-use serenity::model::id::GuildId;
+use crate::discord_bot::context::Context;
+use twilight_model::channel::Message;
+use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::Id;
 
 const LIST_1: [&str; 236] = [
     "abruptly",
@@ -438,7 +439,7 @@ const LIST_2: [&str; 192] = [
 
 pub(crate) async fn run(
     _args: &str,
-    _guild_id: GuildId,
+    _guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -446,8 +447,7 @@ pub(crate) async fn run(
         rand::seq::IteratorRandom::choose(LIST_1.iter().copied(), &mut rand::rng()).unwrap();
     let word_two =
         rand::seq::IteratorRandom::choose(LIST_2.iter().copied(), &mut rand::rng()).unwrap();
-    message
-        .reply(ctx, format!("{} {}", word_one, word_two))
+    ctx.reply(message, format!("{} {}", word_one, word_two))
         .await?;
     Ok(())
 }

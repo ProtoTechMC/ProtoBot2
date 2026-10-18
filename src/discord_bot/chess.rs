@@ -1,5 +1,5 @@
+use crate::discord_bot::context::Context;
 use crate::discord_bot::guild_storage::GuildStorage;
-use log::warn;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, one_of};
@@ -7,21 +7,25 @@ use nom::combinator::{eof, map, not, opt, value};
 use nom::sequence::{pair, preceded, terminated};
 use nom::{Finish, IResult, Parser};
 use serde::{Deserialize, Serialize};
-use serenity::builder::{CreateEmbed, CreateMessage};
-use serenity::client::Context;
-use serenity::model::channel::Message;
-use serenity::model::id::{GuildId, UserId};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
+use tracing::warn;
+use twilight_model::channel::Message;
+use twilight_model::id::marker::{GuildMarker, UserMarker};
+use twilight_model::id::Id;
+use twilight_util::builder::embed::{EmbedBuilder, ImageSource};
 // ===== USER INTERACTION ===== //
 
-async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+async fn print_usage(
+    guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
     let prefix = GuildStorage::get(guild_id).await.command_prefix.clone();
-    message
-        .reply(
-            ctx,
-            format!(
-                "```\n\
+    ctx.reply(
+        message,
+        format!(
+            "```\n\
                 {prefix}chess start <@opponent>\n\
                 {prefix}chess [move] <theMove>\n\
                 {prefix}chess resign\n\
@@ -29,26 +33,23 @@ async fn print_usage(guild_id: GuildId, ctx: Context, message: &Message) -> crat
                 {prefix}chess help\n\
                 {prefix}chess option <flip> <value>\n\
                 ```"
-            ),
-        )
-        .await?;
+        ),
+    )
+    .await?;
     Ok(())
 }
 
-async fn display_name(guild_id: GuildId, ctx: &Context, user: UserId) -> String {
-    guild_id
-        .member(ctx, user)
+async fn display_name(guild_id: Id<GuildMarker>, ctx: &Context, user: Id<UserMarker>) -> String {
+    ctx.display_name(guild_id, user)
         .await
-        .ok()
-        .map(|member| member.display_name().to_owned())
-        .unwrap_or_else(|| "<unknown>".to_owned())
+        .unwrap_or_else(|_| "<unknown>".to_owned())
 }
 
 async fn print_board(
     options: &ChessOptions,
     game: &mut ChessGame,
     include_to_move_message: bool,
-    user: UserId,
+    user: Id<UserMarker>,
     ctx: &Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -121,33 +122,25 @@ async fn print_board(
         url.push(char::from_u32('1' as u32 + checked_king.y() as u32).unwrap());
     }
 
-    message
-        .channel_id
-        .send_message(
-            ctx,
-            CreateMessage::new()
-                .reference_message(message)
-                .embed(CreateEmbed::new().image(url)),
-        )
+    ctx.http
+        .create_message(message.channel_id)
+        .reply(message.id)
+        .embeds(&[EmbedBuilder::new().image(ImageSource::url(url)?).build()])
         .await?;
 
     if include_to_move_message {
         if game.black_to_move {
-            message
-                .channel_id
-                .send_message(
-                    ctx,
-                    CreateMessage::new().content(format!("Black to move <@{}>", game.user_black)),
-                )
-                .await?;
+            ctx.send_message(
+                message.channel_id,
+                format!("Black to move <@{}>", game.user_black),
+            )
+            .await?;
         } else {
-            message
-                .channel_id
-                .send_message(
-                    ctx,
-                    CreateMessage::new().content(format!("White to move <@{}>", game.user_white)),
-                )
-                .await?;
+            ctx.send_message(
+                message.channel_id,
+                format!("White to move <@{}>", game.user_white),
+            )
+            .await?;
         }
     }
 
@@ -155,41 +148,39 @@ async fn print_board(
 }
 
 async fn start_game(
-    user_a: UserId,
-    user_b: UserId,
-    guild_id: GuildId,
+    user_a: Id<UserMarker>,
+    user_b: Id<UserMarker>,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
     if user_a == user_b {
-        message.reply(ctx, "You cannot play yourself!").await?;
+        ctx.reply(message, "You cannot play yourself!").await?;
         return Ok(());
     }
 
     let mut storage = GuildStorage::get_mut(guild_id).await;
     if storage.chess_state.get_game(user_a).is_some() {
-        message
-            .reply(
-                &ctx,
-                format!(
-                    "{} is already in a game",
-                    display_name(guild_id, &ctx, user_a).await
-                ),
-            )
-            .await?;
+        ctx.reply(
+            message,
+            format!(
+                "{} is already in a game",
+                display_name(guild_id, &ctx, user_a).await
+            ),
+        )
+        .await?;
         storage.discard();
         return Ok(());
     }
     if storage.chess_state.get_game(user_b).is_some() {
-        message
-            .reply(
-                &ctx,
-                format!(
-                    "{} is already in a game",
-                    display_name(guild_id, &ctx, user_b).await
-                ),
-            )
-            .await?;
+        ctx.reply(
+            message,
+            format!(
+                "{} is already in a game",
+                display_name(guild_id, &ctx, user_b).await
+            ),
+        )
+        .await?;
         storage.discard();
         return Ok(());
     }
@@ -267,7 +258,11 @@ async fn start_game(
     Ok(())
 }
 
-async fn resign_game(guild_id: GuildId, ctx: Context, message: &Message) -> crate::Result<()> {
+async fn resign_game(
+    guild_id: Id<GuildMarker>,
+    ctx: Context,
+    message: &Message,
+) -> crate::Result<()> {
     let mut storage = GuildStorage::get_mut(guild_id).await;
     let resigner = message.author.id;
     let resigned_game = match storage
@@ -279,7 +274,7 @@ async fn resign_game(guild_id: GuildId, ctx: Context, message: &Message) -> crat
     {
         Some((index, _)) => storage.chess_state.games.remove(index),
         None => {
-            message.reply(ctx, "You aren't in a game").await?;
+            ctx.reply(message, "You aren't in a game").await?;
             storage.discard();
             return Ok(());
         }
@@ -291,16 +286,15 @@ async fn resign_game(guild_id: GuildId, ctx: Context, message: &Message) -> crat
         resigned_game.user_white
     };
 
-    message
-        .reply(
-            &ctx,
-            format!(
-                "{} resigned, <@{}> wins!",
-                display_name(guild_id, &ctx, resigner).await,
-                opponent
-            ),
-        )
-        .await?;
+    ctx.reply(
+        message,
+        format!(
+            "{} resigned, <@{}> wins!",
+            display_name(guild_id, &ctx, resigner).await,
+            opponent
+        ),
+    )
+    .await?;
 
     storage.save().await;
 
@@ -308,7 +302,7 @@ async fn resign_game(guild_id: GuildId, ctx: Context, message: &Message) -> crat
 }
 
 async fn set_option(
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
     key: &str,
@@ -324,44 +318,41 @@ async fn set_option(
         ("flip", "false") => options.flip = false,
         ("flip", "true") => options.flip = true,
         ("flip", _) => {
-            message
-                .reply(ctx, "Invalid option value for \"flip\"")
+            ctx.reply(message, "Invalid option value for \"flip\"")
                 .await?;
             storage.discard();
             return Ok(());
         }
         _ => {
-            message
-                .reply(
-                    ctx,
-                    format!(
-                        "Invalid option name. Type {}chess help for a list of options.",
-                        storage.command_prefix
-                    ),
-                )
-                .await?;
+            ctx.reply(
+                message,
+                format!(
+                    "Invalid option name. Type {}chess help for a list of options.",
+                    storage.command_prefix
+                ),
+            )
+            .await?;
             storage.discard();
             return Ok(());
         }
     }
-    message
-        .reply(
-            &ctx,
-            format!(
-                "Option \"{}\" set to {} for {}",
-                key,
-                value,
-                display_name(guild_id, &ctx, message.author.id).await
-            ),
-        )
-        .await?;
+    ctx.reply(
+        message,
+        format!(
+            "Option \"{}\" set to {} for {}",
+            key,
+            value,
+            display_name(guild_id, &ctx, message.author.id).await
+        ),
+    )
+    .await?;
     storage.save().await;
     Ok(())
 }
 
 async fn do_move(
     mov: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -373,7 +364,7 @@ async fn do_move(
         Some(game_and_options) => game_and_options,
         None => {
             storage.discard();
-            message.reply(ctx, "You aren't in a game").await?;
+            ctx.reply(message, "You aren't in a game").await?;
             return Ok(());
         }
     };
@@ -385,7 +376,7 @@ async fn do_move(
     };
     if black != game.black_to_move {
         storage.discard();
-        message.reply(ctx, "It's not your turn").await?;
+        ctx.reply(message, "It's not your turn").await?;
         return Ok(());
     }
 
@@ -393,7 +384,7 @@ async fn do_move(
         Ok(mov) => mov,
         Err(msg) => {
             storage.discard();
-            message.reply(ctx, msg).await?;
+            ctx.reply(message, msg).await?;
             return Ok(());
         }
     };
@@ -406,7 +397,7 @@ async fn do_move(
         Some(piece) => piece,
         None => {
             storage.discard();
-            message.reply(ctx, "Invalid piece").await?;
+            ctx.reply(message, "Invalid piece").await?;
             return Ok(());
         }
     };
@@ -417,13 +408,13 @@ async fn do_move(
 
     if !piece.move_piece(mov.src, mov.dst, &mut new_state, false) {
         storage.discard();
-        message.reply(ctx, "Invalid move").await?;
+        ctx.reply(message, "Invalid move").await?;
         return Ok(());
     }
 
     if get_checked_king(&mut new_state).is_valid() {
         storage.discard();
-        message.reply(ctx, "Illegal move").await?;
+        ctx.reply(message, "Illegal move").await?;
         return Ok(());
     }
 
@@ -466,28 +457,26 @@ async fn do_move(
 
     match win_state {
         WinState::Checkmate => {
-            message
-                .reply(
-                    &ctx,
-                    format!(
-                        "Checkmate! {} wins! <@{}> lost.",
-                        display_name(guild_id, &ctx, message.author.id).await,
-                        opponent
-                    ),
-                )
-                .await?;
+            ctx.reply(
+                message,
+                format!(
+                    "Checkmate! {} wins! <@{}> lost.",
+                    display_name(guild_id, &ctx, message.author.id).await,
+                    opponent
+                ),
+            )
+            .await?;
         }
         WinState::Stalemate => {
-            message
-                .reply(
-                    &ctx,
-                    format!(
-                        "Stalemate. Draw between {} and <@{}>.",
-                        display_name(guild_id, &ctx, message.author.id).await,
-                        opponent
-                    ),
-                )
-                .await?;
+            ctx.reply(
+                message,
+                format!(
+                    "Stalemate. Draw between {} and <@{}>.",
+                    display_name(guild_id, &ctx, message.author.id).await,
+                    opponent
+                ),
+            )
+            .await?;
         }
         _ => {}
     }
@@ -497,7 +486,7 @@ async fn do_move(
 
 pub(crate) async fn run(
     args: &str,
-    guild_id: GuildId,
+    guild_id: Id<GuildMarker>,
     ctx: Context,
     message: &Message,
 ) -> crate::Result<()> {
@@ -516,7 +505,7 @@ pub(crate) async fn run(
                 .and_then(|arg| arg.strip_suffix('>'))
                 .and_then(|arg| arg.parse().ok())
             {
-                Some(id) => UserId::new(id),
+                Some(id) => id,
                 None => return print_usage(guild_id, ctx, message).await,
             };
             return start_game(message.author.id, opponent, guild_id, ctx, message).await;
@@ -532,7 +521,7 @@ pub(crate) async fn run(
                 print_board(options, game, true, message.author.id, &ctx, message).await?;
                 storage.save().await;
             } else {
-                message.reply(ctx, "You aren't in a game").await?;
+                ctx.reply(message, "You aren't in a game").await?;
                 storage.discard();
             }
         }
@@ -1056,11 +1045,11 @@ impl SubAssign for Square {
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct ChessState {
     games: Vec<ChessGame>,
-    options: HashMap<UserId, ChessOptions>,
+    options: HashMap<Id<UserMarker>, ChessOptions>,
 }
 
 impl ChessState {
-    fn get_game(&self, user_id: UserId) -> Option<&ChessGame> {
+    fn get_game(&self, user_id: Id<UserMarker>) -> Option<&ChessGame> {
         self.games
             .iter()
             .find(|game| game.user_white == user_id || game.user_black == user_id)
@@ -1068,7 +1057,7 @@ impl ChessState {
 
     fn get_game_and_options_mut(
         &mut self,
-        user_id: UserId,
+        user_id: Id<UserMarker>,
     ) -> Option<(&mut ChessGame, &mut ChessOptions)> {
         self.games
             .iter_mut()
@@ -1079,8 +1068,8 @@ impl ChessState {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ChessGame {
-    user_white: UserId,
-    user_black: UserId,
+    user_white: Id<UserMarker>,
+    user_black: Id<UserMarker>,
     black_to_move: bool,
     castle_state: (CastleState, CastleState),
     #[serde(

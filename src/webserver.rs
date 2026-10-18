@@ -6,9 +6,9 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use log::{info, warn};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
+use tracing::{info, warn};
 
 async fn post_application(
     request: Request<Incoming>,

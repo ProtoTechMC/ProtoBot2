@@ -1,8 +1,8 @@
 use crate::pterodactyl::PterodactylServer;
 use crate::{config, ProtobotData};
-use log::{error, info};
 use pterodactyl_api::client::Server;
 use std::collections::HashSet;
+use tracing::{error, info};
 use uuid::Uuid;
 
 pub(crate) async fn run(

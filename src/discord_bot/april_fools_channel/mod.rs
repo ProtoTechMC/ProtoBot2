@@ -1,10 +1,12 @@
 use crate::discord_bot::april_fools_channel::exact_message_length::ExactMessageLengthData;
+use crate::discord_bot::context::Context;
 use crate::discord_bot::guild_storage::GuildStorage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serenity::all::{
-    ChannelId, Context, CreateMessage, GuildId, MessageFlags, MessageId, User, UserId,
-};
+use twilight_model::channel::message::MessageFlags;
+use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker};
+use twilight_model::id::Id;
+use twilight_model::user::User;
 
 mod exact_message_length;
 mod haiku;
@@ -16,25 +18,25 @@ pub(crate) struct AprilFoolsMessageContext<'a> {
     pub has_attachments: bool,
     pub content: &'a str,
     pub author: &'a User,
-    pub guild_id: GuildId,
-    pub channel_id: ChannelId,
-    pub message_id: MessageId,
-    pub own_id: UserId,
+    pub guild_id: Id<GuildMarker>,
+    pub channel_id: Id<ChannelMarker>,
+    pub message_id: Id<MessageMarker>,
+    pub own_id: Id<UserMarker>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub(crate) struct AprilFoolsChannels {
     #[serde(default)]
-    pub simple_words: Option<ChannelId>,
+    pub simple_words: Option<Id<ChannelMarker>>,
     #[serde(default)]
-    pub haiku: Option<ChannelId>,
+    pub haiku: Option<Id<ChannelMarker>>,
     #[serde(default)]
     pub exact_message_length: Option<ExactMessageLengthData>,
 }
 
 pub(crate) async fn get_april_fools_channel(
-    guild_id: GuildId,
-    channel_id: ChannelId,
+    guild_id: Id<GuildMarker>,
+    channel_id: Id<ChannelMarker>,
 ) -> Option<&'static dyn AprilFoolsChannel> {
     let storage = GuildStorage::get(guild_id).await;
     let channels = &storage.april_fools_channels;
@@ -65,29 +67,27 @@ pub(crate) async fn on_message(
     };
     if let Some(mut error_message) = error_message {
         context
-            .channel_id
-            .delete_message(&context.context, context.message_id)
+            .context
+            .http
+            .delete_message(context.channel_id, context.message_id)
             .await?;
         if !context.author.bot {
-            let dm_channel = context.author.create_dm_channel(&context.context).await?;
+            let dm_channel = context.context.create_dm_channel(context.author.id).await?;
             if let Some(your_original_message_was) = april_fools.your_original_message_was() {
                 error_message.push(' ');
                 error_message.push_str(your_original_message_was);
             }
-            dm_channel
-                .send_message(
-                    &context.context,
-                    CreateMessage::new().content(error_message),
-                )
+            context
+                .context
+                .send_message(dm_channel.id, error_message)
                 .await?;
             if !context.content.is_empty() {
-                dm_channel
-                    .send_message(
-                        context.context,
-                        CreateMessage::new()
-                            .content(context.content)
-                            .flags(MessageFlags::SUPPRESS_NOTIFICATIONS),
-                    )
+                context
+                    .context
+                    .http
+                    .create_message(dm_channel.id)
+                    .content(context.content)
+                    .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
                     .await?;
             }
         }
