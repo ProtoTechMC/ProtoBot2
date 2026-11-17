@@ -1,4 +1,5 @@
 mod activity_tracker;
+mod advent_of_code;
 mod april_fools_channel;
 mod brainfuck;
 mod chess;
@@ -630,6 +631,7 @@ pub(crate) async fn run(bot: DiscordBot) -> crate::Result<()> {
     tokio::select! {
         _ = crate::wait_shutdown() => {}
         _ = event_loop => {}
+        _ = advent_of_code::run(ctx.clone()) => {}
     }
     Ok(())
 }

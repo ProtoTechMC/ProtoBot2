@@ -39,6 +39,7 @@ pub struct Config {
     pub pterodactyl_chat_bridges: Vec<PterodactylChatBridge>,
     pub special_channels: SpecialChannels,
     pub special_roles: SpecialRoles,
+    pub advent_of_code_messages: Vec<String>,
 }
 
 impl Config {
@@ -50,6 +51,13 @@ impl Config {
     }
 
     fn lint(&self) {
+        if self.advent_of_code_messages.len() > 31 {
+            warn!(
+                "Too many advent of code messages: {} (max 31)",
+                self.advent_of_code_messages.len()
+            );
+        }
+
         let mut seen_bridge_servers = HashSet::new();
         let mut seen_bridge_channels = HashSet::new();
         for chat_bridge in &self.pterodactyl_chat_bridges {
@@ -108,6 +116,7 @@ impl Config {
 pub struct SpecialChannels {
     pub applications: Id<ChannelMarker>,
     pub support: Id<ChannelMarker>,
+    pub advent_of_code: Id<ChannelMarker>,
 }
 
 #[derive(Deserialize)]
